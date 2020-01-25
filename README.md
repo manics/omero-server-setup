@@ -1,0 +1,1 @@
+# OMERO database management plugin

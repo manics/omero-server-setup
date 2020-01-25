@@ -1,26 +1,17 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from __future__ import absolute_import
-from builtins import zip
-from builtins import range
-from past.builtins import basestring
-from builtins import object
+from datetime import datetime
+from glob import glob
 import os
 import logging
-
-from glob import glob
 import re
 
-from . import fileutils
 from . import external
-from yaclifw.framework import Command, Stop
-from .env import (
-    DbParser,
-    OmeroDeployParser,
-)
 
-log = logging.getLogger("omego.db")
+log = logging.getLogger("omero_database.db")
+
+HELP = """Manage an OMERO PostgreSQL database"""
 
 # Regular expression identifying a SQL schema
 SQL_SCHEMA_REGEXP = re.compile(r'.*OMERO(\d+)(\.|A)?(\d*)([A-Z]*)__(\d+)$')
@@ -30,6 +21,29 @@ DB_UPTODATE = 0
 DB_UPGRADE_NEEDED = 2
 DB_INIT_NEEDED = 3
 
+
+class Stop(Exception):
+    def __init__(self, code, message):
+        super().__init__(code, message)
+        self.rc = code
+        self.msg = message
+
+    def __str__(self):
+        return 'ERROR [{}] {}'.format(self.args[0], self.args[1])
+
+
+def timestamp_filename(basename, ext=None):
+    """
+    Return a string of the form [basename-TIMESTAMP.ext]
+    where TIMESTAMP is of the form YYYYMMDD-HHMMSS-MILSEC
+    """
+    dt = datetime.now().strftime('%Y%m%d-%H%M%S-%f')
+    if ext:
+        return '%s-%s.%s' % (basename, dt, ext)
+    return '%s-%s' % (basename, dt)
+
+
+##########
 
 def is_schema(s):
     """Return true if the string is a valid SQL schema"""
@@ -90,7 +104,7 @@ class DbAdmin(object):
         if command in ('init', 'upgrade', 'dump'):
             getattr(self, command)()
         elif command is not None:
-            raise Stop('Invalid db command: %s', command)
+            raise Stop(10, 'Invalid db command: %s' % command)
 
     def check_connection(self):
         try:
@@ -103,7 +117,7 @@ class DbAdmin(object):
         omerosql = self.args.omerosql
         autoupgrade = False
         if not omerosql:
-            omerosql = fileutils.timestamp_filename('omero', 'sql')
+            omerosql = timestamp_filename('omero', 'sql')
             log.info('Creating SQL: %s', omerosql)
             if not self.args.dry_run:
                 self.external.omero_cli(
@@ -122,6 +136,10 @@ class DbAdmin(object):
 
         if autoupgrade:
             self.upgrade()
+
+        # If this is a temporary sql file delete it
+        if not self.args.omerosql and not self.args.dry_run:
+            os.remove(omerosql)
 
     def sort_schema(self, versions):
         return sort_schemas(versions)
@@ -218,7 +236,7 @@ class DbAdmin(object):
         dumpfile = self.args.dumpfile
         if not dumpfile:
             db, env = self.get_db_args_env()
-            dumpfile = fileutils.timestamp_filename(
+            dumpfile = timestamp_filename(
                 'omero-database-%s' % db['name'], 'pgdump')
 
         log.info('Dumping database to %s', dumpfile)
@@ -229,7 +247,7 @@ class DbAdmin(object):
         """
         Get a dictionary of database connection parameters, and create an
         environment for running postgres commands.
-        Falls back to omego defaults.
+        Falls back to omero defaults.
         """
         db = {
             'name': self.args.dbname,
@@ -242,7 +260,7 @@ class DbAdmin(object):
             try:
                 c = self.external.get_config()
             except Exception as e:
-                log.warn('config.xml not found: %s', e)
+                log.warning('config.xml not found: %s', e)
                 c = {}
 
             for k in db:
@@ -275,7 +293,7 @@ class DbAdmin(object):
             ] + list(psqlargs)
         stdout, stderr = external.run('psql', args, capturestd=True, env=env)
         if stderr:
-            log.warn('stderr: %s', stderr)
+            log.warning('stderr: %s', stderr)
         log.debug('stdout: %s', stdout)
         return stdout.decode()
 
@@ -290,60 +308,6 @@ class DbAdmin(object):
         stdout, stderr = external.run(
             'pg_dump', args, capturestd=True, env=env)
         if stderr:
-            log.warn('stderr: %s', stderr)
+            log.warning('stderr: %s', stderr)
         log.debug('stdout: %s', stdout)
         return stdout.decode()
-
-
-class DbCommand(Command):
-    """
-    Administer an OMERO database
-    """
-
-    NAME = "db"
-
-    def __init__(self, sub_parsers):
-        super(DbCommand, self).__init__(sub_parsers)
-
-        self.parser = DbParser(self.parser)
-        self.parser = OmeroDeployParser(self.parser)
-        self.parser.add_argument("-n", "--dry-run", action="store_true", help=(
-            "Simulation/check mode. In 'upgrade' mode exits with code 2 if an "
-            "upgrade is required, 3 if database isn't initialised, 0 if "
-            "database is up-to-date."))
-
-        # TODO: Kind of duplicates Upgrade args.sym/args.server
-        self.parser.add_argument(
-            '--serverdir', help='Root directory of the server')
-        self.parser.add_argument(
-            "dbcommand",
-            choices=['init', 'upgrade', 'dump'],
-            help='Initialise or upgrade a database')
-        self.parser.add_argument('--dumpfile', help='Database dump file')
-
-    def __call__(self, args):
-        super(DbCommand, self).__call__(args)
-        self.configure_logging(args)
-
-        # Since EnvDefault.__action__ is only called if a user actively passes
-        # a variable, there's no way to do the string replacing in the action
-        # itself. Instead, we're post-processing them here, but this could be
-        # improved.
-
-        names = sorted(x.dest for x in self.parser._actions)
-        for dest in names:
-            if dest in ("help", "verbose", "quiet"):
-                continue
-            value = getattr(args, dest)
-            if value and isinstance(value, basestring):
-                replacement = value % dict(args._get_kwargs())
-                log.debug("% 20s => %s" % (dest, replacement))
-                setattr(args, dest, replacement)
-
-        if args.serverdir:
-            d = args.serverdir
-        else:
-            raise Stop(1, 'OMERO server directory required')
-        ext = external.External(d, args.python)
-        ext.setup_omero_cli(args.omerocli)
-        DbAdmin(d, args.dbcommand, args, ext)

@@ -1,17 +1,16 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from __future__ import absolute_import
-from builtins import object
 import subprocess
 import logging
 import os
 import tempfile
 import time
 
-from .env import WINDOWS
+from omero.cli import CLI
+from omero.config import ConfigXml
 
-log = logging.getLogger("omego.external")
+log = logging.getLogger('omero_database.external')
 
 
 class RunException(Exception):
@@ -25,11 +24,12 @@ class RunException(Exception):
         self.stderr = stderr
 
     def fullstr(self):
-        return '%s\nstdout: %s\nstderr: %s' % (
-            self.shortstr(), self.stdout, self.stderr)
+        return '%s\n  stdout: %s\n  stderr: %s' % (
+            self.shortstr(), self.stdout.decode(errors='replace'),
+            self.stderr.decode(errors='replace'))
 
     def shortstr(self):
-        return '%s\ncommand: %s %s\nreturn code: %d' % (
+        return '%s\n  command: %s %s\n  return code: %d' % (
             super(RunException, self).__str__(), self.exe,
             ' '.join(self.exeargs), self.r)
 
@@ -63,8 +63,7 @@ def run(exe, args, capturestd=False, env=None):
     # in case user input is required
     # On Windows shell=True is needed otherwise the modified environment
     # PATH variable is ignored. On Unix this breaks things.
-    r = subprocess.call(
-        command, env=env, stdout=outfile, stderr=errfile, shell=WINDOWS)
+    r = subprocess.call(command, env=env, stdout=outfile, stderr=errfile)
 
     stdout = None
     stderr = None
@@ -90,168 +89,33 @@ class External(object):
     Manages the execution of shell and OMERO CLI commands
     """
 
-    def __init__(self, dir, python):
+    def __init__(self, dir):
         """
         :param dir: The server directory, can be None if you are not
                     interacting with OMERO
-        :param python: The python executable to use for run bin/omero, set to
-                       the empty string "" to use the python defined by the
-                       shebang line in bin/omero
         """
-        self.old_env = None
         self.cli = None
-        self.python = python
-
         self.dir = None
         if dir:
-            self.set_server_dir(dir)
-
-        self._omero = None
-
-    def set_server_dir(self, dir):
-        """
-        Set the directory of the server to be controlled
-        """
-        self.dir = os.path.abspath(dir)
+            self.dir = os.path.abspath(dir)
+        self.cli = CLI()
+        self.cli.loadplugins()
 
     def get_config(self):
         """
         Returns a dictionary of all OMERO config properties
-
-        Assumes properties are in the form key=value, multiline-properties are
-        not supported
         """
-        # OMERO 5.4.1 changed the default from showing to hiding passwords
-        try:
-            stdout, stderr = self.omero_cli(
-                ['config', 'get', '--show-password'])
-        except RunException as e:
-            log.warn('Failed to config get --show-password, trying without '
-                     '--show-password: %s', e)
-            stdout, stderr = self.omero_cli(['config', 'get'])
-        try:
-            return dict(line.split('=', 1)
-                        for line in stdout.decode().splitlines() if line)
-        except ValueError:
-            raise Exception('Failed to parse omero config: %s' % stdout)
-
-    def setup_omero_cli(self, omero_cli=None):
-        """
-        Configures the OMERO CLI.
-        omero_cli: path to bin/omero command, if None then try in order:
-        - OMERO.server/bin/omero
-        - omero (in PATH)
-        """
-        if not omero_cli:
-            if self.dir:
-                omero_bin = os.path.join(self.dir, "bin", "omero")
-                if (os.path.exists(omero_bin) and
-                        self._bin_omero_valid(omero_bin)):
-                    omero_cli = omero_bin
-            if not omero_cli:
-                omero_bin = 'omero'
-                if self._bin_omero_valid(omero_bin):
-                    omero_cli = omero_bin
-            if not omero_cli:
-                raise Exception('Unable to find omero executable')
-        else:
-            if not self._bin_omero_valid(omero_cli):
-                raise Exception('Unable to execute omero executable')
-
-        log.debug("Using omero CLI from %s", omero_cli)
-        self.cli = omero_cli
-
-    def _bin_omero_valid(self, bin_omero):
-        try:
-            self.run_python(bin_omero, ['version'])
-            return True
-        except RunException:
-            return False
-
-    def setup_previous_omero_env(self, olddir, savevarsfile):
-        """
-        Create a copy of the current environment for interacting with the
-        current OMERO server installation
-        """
-        env = self.get_environment(savevarsfile)
-
-        def addpath(varname, p):
-            current = env.get(varname, "")
-            if os.path.exists(p):
-                if current:
-                    env[varname] = p + os.pathsep + current
-                else:
-                    env[varname] = p
-            else:
-                log.info("%s does not exist", p)
-                env[varname] = current
-
-        olddir = os.path.abspath(olddir)
-        lib = os.path.join(olddir, "lib", "python")
-        addpath("PYTHONPATH", lib)
-        bin = os.path.join(olddir, "bin")
-        addpath("PATH", bin)
-        self.old_env = env
-        self.old_cli = os.path.join(bin, "omero")
+        configxml = os.path.join(self.dir, 'etc', 'grid', 'config.xml')
+        configobj = ConfigXml(configxml, read_only=True)
+        cfgdict = configobj.as_map()
+        configobj.close()
+        return cfgdict
 
     def omero_cli(self, command):
         """
         Runs an OMERO CLI command
-        CLI must have been initialised using setup_omero_cli()
         """
         assert isinstance(command, list)
-        if not self.cli:
-            raise Exception('OMERO CLI not initialised')
-        log.info("Running [current environment]: %s %s",
-                 self.cli, " ".join(command))
-        return self.run_python(self.cli, command, capturestd=True)
-
-    def omero_old(self, command):
-        """
-        Runs the omero command-line client with an array of arguments using the
-        old environment
-        """
-        assert isinstance(command, list)
-        if not self.old_env:
-            raise Exception('Old environment not initialised')
-        log.info("Running [old environment]: %s %s",
-                 self.old_cli, " ".join(command))
-        return self.run_python(
-            self.old_cli, command, capturestd=True, env=self.old_env)
-
-    def get_environment(self, filename=None):
-        env = os.environ.copy()
-        if not filename:
-            log.debug("Using original environment")
-            return env
-
-        try:
-            with open(filename, "r") as f:
-                log.info("Loading old environment")
-                for line in f:
-                    key, value = line.strip().split("=", 1)
-                    env[key] = value
-                    log.debug("  %s=%s", key, value)
-        except IOError as e:
-            log.error("Failed to load environment variables from %s: %s",
-                      filename, e)
-
-        # TODO: Throw a catchable exception
-        return env
-
-    def save_env_vars(self, filename, varnames):
-        try:
-            with open(filename, "w") as f:
-                log.info("Saving environment")
-                for var in varnames:
-                    value = os.environ.get(var, "")
-                    f.write("%s=%s\n" % (var, value))
-                    log.debug("  %s=%s", var, value)
-        except IOError as e:
-            log.error("Failed to save environment variables to %s: %s",
-                      filename, e)
-
-    def run_python(self, command, args, **kwargs):
-        if self.python:
-            return run(self.python, [command] + args, **kwargs)
-        return run(command, args, **kwargs)
+        log.info('Running omero:', ' '.join(command))
+        return self.cli.invoke(command)
+        # TODO: capturestd=True

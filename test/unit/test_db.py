@@ -19,18 +19,22 @@
 # with this program; if not, write to the Free Software Foundation, Inc.,
 # 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 
-from builtins import str
-from builtins import object
 import pytest
 from mox3 import mox
 
 import os
+import re
 
-from omego import external
-from yaclifw.framework import Stop
-import omego.db
-import omego.fileutils
-from omego.db import DbAdmin, is_schema, sort_schemas, parse_schema_files
+from omero_database import external
+import omero_database.db
+from omero_database.db import (
+    DbAdmin,
+    is_schema,
+    sort_schemas,
+    parse_schema_files,
+    Stop,
+    timestamp_filename,
+)
 
 
 @pytest.mark.parametrize('version,expected', [
@@ -99,6 +103,15 @@ class TestDb(object):
     def teardown_method(self, method):
         self.mox.UnsetStubs()
 
+    @pytest.mark.parametrize('ext', [True, False])
+    def test_timestamp_filename(self, ext):
+        if ext:
+            s = timestamp_filename('name', 'test')
+            assert re.match(r'^name-\d{8}-\d{6}-\d{6}\.test$', s)
+        else:
+            s = timestamp_filename('name')
+            assert re.match(r'^name-\d{8}-\d{6}-\d{6}$', s)
+
     @pytest.mark.parametrize('connected', [True, False])
     def test_check_connection(self, connected):
         db = self.PartialMockDb(None, None)
@@ -116,7 +129,7 @@ class TestDb(object):
         else:
             with pytest.raises(Stop) as excinfo:
                 db.check_connection()
-            assert str(excinfo.value) == 'Database connection check failed'
+            assert excinfo.value.msg == 'Database connection check failed'
 
         self.mox.VerifyAll()
 
@@ -132,13 +145,14 @@ class TestDb(object):
                           'dry_run': dryrun})
         db = self.PartialMockDb(args, ext)
         self.mox.StubOutWithMock(db, 'psql')
-        self.mox.StubOutWithMock(omego.fileutils, 'timestamp_filename')
+        self.mox.StubOutWithMock(omero_database.db, 'timestamp_filename')
         self.mox.StubOutWithMock(os.path, 'exists')
         self.mox.StubOutWithMock(db, 'upgrade')
+        self.mox.StubOutWithMock(os, 'remove')
 
         if sqlfile == 'notprovided':
             omerosql = 'omero-00000000-000000-000000.sql'
-            omego.fileutils.timestamp_filename('omero', 'sql').AndReturn(
+            omero_database.db.timestamp_filename('omero', 'sql').AndReturn(
                 omerosql)
         else:
             os.path.exists(omerosql).AndReturn(sqlfile == 'exists')
@@ -153,19 +167,22 @@ class TestDb(object):
         if sqlfile != 'missing' and not dryrun:
             db.psql('-f', omerosql)
 
+        if sqlfile == 'notprovided' and not dryrun:
+            os.remove('omero-00000000-000000-000000.sql')
+
         self.mox.ReplayAll()
 
         if sqlfile == 'missing':
             with pytest.raises(Stop) as excinfo:
                 db.init()
-            assert str(excinfo.value) == 'SQL file not found'
+            assert excinfo.value.msg == 'SQL file not found'
         else:
             db.init()
         self.mox.VerifyAll()
 
     def test_sql_version_matrix(self):
-        self.mox.StubOutWithMock(omego.db, 'glob')
-        omego.db.glob(
+        self.mox.StubOutWithMock(omero_database.db, 'glob')
+        omero_database.db.glob(
             os.path.join('.', 'sql', 'psql', 'OMERO*', 'OMERO*.sql')
             ).AndReturn(['./sql/psql/OMERO5.0__0/OMERO4.4__0.sql',
                          './sql/psql/OMERO5.1__0/OMERO5.0__0.sql'])
@@ -251,7 +268,7 @@ class TestDb(object):
             with pytest.raises(Stop) as excinfo:
                 db.upgrade()
             assert excinfo.value.rc == 2
-            assert str(excinfo.value) == (
+            assert excinfo.value.msg == (
                 'Database upgrade required OMERO4.4__0->OMERO5.0__0')
         else:
             db.upgrade()
@@ -271,7 +288,7 @@ class TestDb(object):
         with pytest.raises(Stop) as excinfo:
             db.upgrade()
         assert excinfo.value.rc == 3
-        assert str(excinfo.value) == 'Unable to get database version'
+        assert excinfo.value.msg == 'Unable to get database version'
         self.mox.VerifyAll()
 
     def test_get_current_db_version(self):
@@ -290,7 +307,7 @@ class TestDb(object):
     def test_dump(self, dumpfile, dryrun):
         args = self.Args({'dry_run': dryrun, 'dumpfile': dumpfile})
         db = self.PartialMockDb(args, None)
-        self.mox.StubOutWithMock(omego.fileutils, 'timestamp_filename')
+        self.mox.StubOutWithMock(omero_database.db, 'timestamp_filename')
         self.mox.StubOutWithMock(db, 'get_db_args_env')
         self.mox.StubOutWithMock(db, 'pgdump')
 
@@ -298,7 +315,7 @@ class TestDb(object):
             db.get_db_args_env().AndReturn(self.create_db_test_params())
 
             dumpfile = 'omero-database-name-00000000-000000-000000.pgdump'
-            omego.fileutils.timestamp_filename(
+            omero_database.db.timestamp_filename(
                 'omero-database-name', 'pgdump').AndReturn(dumpfile)
 
         if not dryrun:
