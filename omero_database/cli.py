@@ -35,7 +35,13 @@ class DatabaseControl(BaseControl):
         parser.add_argument(
             "--no-db-config", action="store_true",
             help="Ignore the database settings in omero config")
-        # TODO Admin credentials: dbauser, dbapass
+
+        parser.add_argument(
+            '--adminuser',
+            help="PostgreSQL admin username")
+        parser.add_argument(
+            '--adminpass',
+            help="PostgreSQL admin password")
 
         parser.add_argument(
             '--verbose', '-v', action='count', default=0,
@@ -49,6 +55,16 @@ class DatabaseControl(BaseControl):
                     DB_UPGRADE_NEEDED, DB_INIT_NEEDED, DB_UPTODATE)))
 
         sub = parser.sub()
+
+        parser_justdoit = parser.add(
+            sub, self.justdoit,
+            'Create, initialise and upgrade a database if necessary')
+        parser_justdoit.set_defaults(dbcommand='justdoit')
+
+        parser_create = parser.add(
+            sub, self.create,
+            'Create, initialise and upgrade a database if necessary')
+        parser_create.set_defaults(dbcommand='create')
 
         parser_init = parser.add(
             sub, self.init, 'Initialise a database')
@@ -64,10 +80,17 @@ class DatabaseControl(BaseControl):
             sub, self.upgrade, 'Upgrade a database')
         parser_upgrade.set_defaults(dbcommand='upgrade')
 
+        parser_upgrade = parser.add(
+            sub, self.upgrade, 'Upgrade a database')
+        parser_upgrade.set_defaults(dbcommand='upgrade')
+
         parser_dump = parser.add(
             sub, self.dump, 'Dump a database')
         parser_dump.add_argument('--dumpfile', help='Database dump file')
         parser_dump.set_defaults(dbcommand='dump')
+
+    def create(self, args):
+        return self.execute(args)
 
     def init(self, args):
         return self.execute(args)
@@ -76,6 +99,9 @@ class DatabaseControl(BaseControl):
         return self.execute(args)
 
     def dump(self, args):
+        return self.execute(args)
+
+    def justdoit(self, args):
         return self.execute(args)
 
     def execute(self, args):

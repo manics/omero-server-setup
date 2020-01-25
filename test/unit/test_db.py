@@ -147,9 +147,11 @@ class TestDb(object):
         self.mox.StubOutWithMock(db, 'psql')
         self.mox.StubOutWithMock(omero_database.db, 'timestamp_filename')
         self.mox.StubOutWithMock(os.path, 'exists')
+        self.mox.StubOutWithMock(db, 'check_connection')
         self.mox.StubOutWithMock(db, 'upgrade')
         self.mox.StubOutWithMock(os, 'remove')
 
+        db.check_connection()
         if sqlfile == 'notprovided':
             omerosql = 'omero-00000000-000000-000000.sql'
             omero_database.db.timestamp_filename('omero', 'sql').AndReturn(
@@ -215,6 +217,37 @@ class TestDb(object):
 
         self.mox.VerifyAll()
 
+    @pytest.mark.parametrize('userexists,dbexists', [
+        (True, True),
+        (True, False),
+        (False, False),
+    ])
+    def test_create(self, userexists, dbexists):
+        args = self.Args({'dry_run': False})
+        db = self.PartialMockDb(args, None)
+        self.mox.StubOutWithMock(db, 'get_db_args_env')
+        self.mox.StubOutWithMock(db, 'psql')
+        db.get_db_args_env().AndReturn(self.create_db_test_params())
+
+        db.psql('-c', "SELECT 1 FROM pg_roles WHERE rolname='user';",
+                admin=True).AndReturn('1\n' if userexists else '')
+        if not userexists:
+            db.psql('-c', "CREATE USER user WITH PASSWORD 'pass';",
+                    admin=True)
+
+        db.psql('-c', "SELECT 1 FROM pg_database WHERE datname='name';",
+                admin=True).AndReturn('1\n' if dbexists else '')
+        if not dbexists:
+            db.psql('-c', "CREATE DATABASE name WITH OWNER user;",
+                    admin=True)
+
+        db.psql('-c', r'\conninfo')
+
+        self.mox.ReplayAll()
+
+        db.create()
+        self.mox.VerifyAll()
+
     @pytest.mark.parametrize('needupdate', [True, False])
     def test_upgrade(self, needupdate):
         args = self.Args({'dry_run': False})
@@ -222,7 +255,10 @@ class TestDb(object):
         self.mox.StubOutWithMock(db, 'get_current_db_version')
         self.mox.StubOutWithMock(db, 'sql_version_matrix')
         self.mox.StubOutWithMock(db, 'sql_version_resolve')
+        self.mox.StubOutWithMock(db, 'check_connection')
         self.mox.StubOutWithMock(db, 'psql')
+
+        db.check_connection()
 
         versions = ['OMERO3.0__0', 'OMERO4.4__0', 'OMERO5.0__0']
         if needupdate:
@@ -249,8 +285,11 @@ class TestDb(object):
         self.mox.StubOutWithMock(db, 'get_current_db_version')
         self.mox.StubOutWithMock(db, 'sql_version_matrix')
         self.mox.StubOutWithMock(db, 'sql_version_resolve')
+        self.mox.StubOutWithMock(db, 'check_connection')
         # Stub out to ensure it's NOT called
         self.mox.StubOutWithMock(db, 'psql')
+
+        db.check_connection()
 
         versions = ['OMERO4.4__0', 'OMERO5.0__0']
         if needupdate:
@@ -279,6 +318,9 @@ class TestDb(object):
         args = self.Args({'dry_run': dryrun})
         db = self.PartialMockDb(args, None)
         self.mox.StubOutWithMock(db, 'get_current_db_version')
+        self.mox.StubOutWithMock(db, 'check_connection')
+
+        db.check_connection()
         exc = external.RunException(
             'test psql failure', 'psql', [], -1, '', '')
         db.get_current_db_version().AndRaise(exc)
@@ -310,7 +352,9 @@ class TestDb(object):
         self.mox.StubOutWithMock(omero_database.db, 'timestamp_filename')
         self.mox.StubOutWithMock(db, 'get_db_args_env')
         self.mox.StubOutWithMock(db, 'pgdump')
+        self.mox.StubOutWithMock(db, 'check_connection')
 
+        db.check_connection()
         if not dumpfile:
             db.get_db_args_env().AndReturn(self.create_db_test_params())
 
@@ -387,12 +431,12 @@ class TestDb(object):
 
         psqlargs = [
             '-v', 'ON_ERROR_STOP=on',
-            '-d', 'name',
+            '-w', '-A', '-t',
             '-h', 'host',
             '-U', 'user',
-            '-w', '-A', '-t',
+            '-d', 'name',
             'arg1', 'arg2']
-        db.get_db_args_env().AndReturn(self.create_db_test_params())
+        db.get_db_args_env(admin=False).AndReturn(self.create_db_test_params())
         external.run('psql', psqlargs, capturestd=True,
                      env={'PGPASSWORD': 'pass'}).AndReturn((b'', b''))
         self.mox.ReplayAll()

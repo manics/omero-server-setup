@@ -20,6 +20,7 @@ SQL_SCHEMA_REGEXP = re.compile(r'.*OMERO(\d+)(\.|A)?(\d*)([A-Z]*)__(\d+)$')
 DB_UPTODATE = 0
 DB_UPGRADE_NEEDED = 2
 DB_INIT_NEEDED = 3
+DB_NO_CONNECTION = 4
 
 
 class Stop(Exception):
@@ -99,9 +100,13 @@ class DbAdmin(object):
         psqlv = self.psql('--version')
         log.info('psql version: %s', psqlv)
 
-        self.check_connection()
-
-        if command in ('init', 'upgrade', 'dump'):
+        if command in (
+            'create',
+            'dump',
+            'init',
+            'justdoit',
+            'upgrade',
+        ):
             getattr(self, command)()
         elif command is not None:
             raise Stop(10, 'Invalid db command: %s' % command)
@@ -111,9 +116,10 @@ class DbAdmin(object):
             self.psql('-c', r'\conninfo')
         except external.RunException as e:
             log.error(e)
-            raise Stop(30, 'Database connection check failed')
+            raise Stop(DB_NO_CONNECTION, 'Database connection check failed')
 
     def init(self):
+        self.check_connection()
         omerosql = self.args.omerosql
         autoupgrade = False
         if not omerosql:
@@ -189,6 +195,12 @@ class DbAdmin(object):
 
     def upgrade(self, check=False):
         try:
+            self.check_connection()
+        except Stop as e:
+            if check:
+                return e.rc
+            raise e
+        try:
             currentsqlv = '%s__%s' % self.get_current_db_version()
         except external.RunException as e:
             log.error(e)
@@ -216,6 +228,49 @@ class DbAdmin(object):
                 log.info('Upgrading database using %s', upgradesql)
                 self.psql('-f', upgradesql)
 
+    def justdoit(self):
+        """
+        Attempt to do everything necessary to ensure the database is created
+        and up-to-date
+        """
+        status = self.upgrade(check=True)
+        if status in (DB_NO_CONNECTION,):
+            self.create()
+
+        if status in (DB_NO_CONNECTION, DB_INIT_NEEDED):
+            self.init()
+
+        if status in (DB_UPGRADE_NEEDED,):
+            self.upgrade()
+
+    def create(self):
+        db, env = self.get_db_args_env()
+
+        userexists = self.psql(
+            '-c', "SELECT 1 FROM pg_roles WHERE rolname='{}';".format(
+                db['user']), admin=True)
+        if userexists.strip() == '1':
+            log.info('Database user exists: %s', db['user'])
+        else:
+            log.info('Creating database user: %s', db['user'])
+            if not self.args.dry_run:
+                self.psql('-c', "CREATE USER {} WITH PASSWORD '{}';".format(
+                    db['user'], db['pass']), admin=True)
+
+        dbexists = self.psql(
+            '-c', "SELECT 1 FROM pg_database WHERE datname='{}';".format(
+                db['name']), admin=True)
+        if dbexists.strip() == '1':
+            log.info('Database exists: %s', db['name'])
+        else:
+            log.info('Creating database: %s', db['name'])
+            if not self.args.dry_run:
+                self.psql('-c', "CREATE DATABASE {} WITH OWNER {};".format(
+                    db['name'], db['user']), admin=True)
+
+        if not self.args.dry_run:
+            self.check_connection()
+
     def get_current_db_version(self):
         q = ('SELECT currentversion, currentpatch FROM dbpatch '
              'ORDER BY id DESC LIMIT 1')
@@ -233,6 +288,7 @@ class DbAdmin(object):
         """
         Dump the database using the postgres custom format
         """
+        self.check_connection()
         dumpfile = self.args.dumpfile
         if not dumpfile:
             db, env = self.get_db_args_env()
@@ -243,7 +299,7 @@ class DbAdmin(object):
         if not self.args.dry_run:
             self.pgdump('-Fc', '-f', dumpfile)
 
-    def get_db_args_env(self):
+    def get_db_args_env(self, admin=False):
         """
         Get a dictionary of database connection parameters, and create an
         environment for running postgres commands.
@@ -254,7 +310,7 @@ class DbAdmin(object):
             'host': self.args.dbhost,
             'user': self.args.dbuser,
             'pass': self.args.dbpass
-            }
+        }
 
         if not self.args.no_db_config:
             try:
@@ -276,21 +332,30 @@ class DbAdmin(object):
 
         env = os.environ.copy()
         env['PGPASSWORD'] = db['pass']
+
+        if admin:
+            if self.args.adminuser:
+                db['user'] = self.args.adminuser
+            if self.args.adminpass:
+                db['pass'] = self.args.adminpass
+                env['PGPASSWORD'] = self.args.adminpass
         return db, env
 
-    def psql(self, *psqlargs):
+    def psql(self, *psqlargs, admin=False):
         """
         Run a psql command
         """
-        db, env = self.get_db_args_env()
+        db, env = self.get_db_args_env(admin=admin)
 
         args = [
             '-v', 'ON_ERROR_STOP=on',
-            '-d', db['name'],
+            '-w', '-A', '-t',
             '-h', db['host'],
             '-U', db['user'],
-            '-w', '-A', '-t'
-            ] + list(psqlargs)
+        ]
+        if not admin:
+            args += ['-d', db['name']]
+        args += list(psqlargs)
         stdout, stderr = external.run('psql', args, capturestd=True, env=env)
         if stderr:
             log.warning('stderr: %s', stderr)

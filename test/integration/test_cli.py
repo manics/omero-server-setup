@@ -10,6 +10,7 @@ from omero_database import (
     DB_INIT_NEEDED,
     DB_UPGRADE_NEEDED,
     DB_UPTODATE,
+    DB_NO_CONNECTION,
     # Stop,
 )
 from omero_database.external import External
@@ -31,6 +32,8 @@ class Args(object):
             dbuser=dbid,
             dbhost=DB_HOST,
             dbpass=dbid,
+            adminuser=DB_ADMIN_USER,
+            adminpass=DB_ADMIN_USER,
         )
 
         for k, v in default_args.items():
@@ -43,15 +46,17 @@ class TestDbAdmin(object):
 
     def setup_method(self, method):
         self.dbid = 'x' + str(uuid4()).replace('-', '')
-        self.psqlc("CREATE USER {0} WITH PASSWORD '{0}';")
-        self.psqlc("CREATE DATABASE {0} WITH OWNER {0};")
         self.omerodir = os.getenv('OMERODIR')
         self.omero531sql = os.path.join(
             os.path.dirname(__file__), '..', 'resources', 'OMERO5.3__1.sql')
 
     def teardown_method(self, method):
-        self.psqlc("DROP DATABASE {0};")
-        self.psqlc("DROP ROLE {0};")
+        self.psqlc("DROP DATABASE IF EXISTS {0};")
+        self.psqlc("DROP ROLE IF EXISTS {0};")
+
+    def create_db(self):
+        self.psqlc("CREATE USER {0} WITH PASSWORD '{0}';")
+        self.psqlc("CREATE DATABASE {0} WITH OWNER {0};")
 
     def psqlc(self, query, *args, admin=True):
         cmd = ['psql']
@@ -69,13 +74,30 @@ class TestDbAdmin(object):
     def test_check(self):
         argscheck = Args(self.dbid, dry_run=True)
         db = DbAdmin(self.omerodir, None, argscheck, External(self.omerodir))
+
+        assert db.check() == DB_NO_CONNECTION
+
+        self.create_db()
         assert db.check() == DB_INIT_NEEDED
 
         self.psqlc(None, '-d', self.dbid, '-f', self.omero531sql,
                    '-U', self.dbid, admin=False)
         assert db.check() == DB_UPGRADE_NEEDED
 
+    def test_create(self):
+        args = Args(self.dbid)
+        db = DbAdmin(self.omerodir, 'create', args, External(self.omerodir))
+        assert db.check() == DB_INIT_NEEDED
+
+        user = self.psqlc("SELECT 1 FROM pg_roles WHERE rolname='{}';".format(
+                          self.dbid))
+        assert user.strip() == b'1'
+        db = self.psqlc("SELECT 1 FROM pg_database WHERE datname='{}';".format(
+                        self.dbid))
+        assert db.strip() == b'1'
+
     def test_init(self):
+        self.create_db()
         args = Args(self.dbid)
         DbAdmin(self.omerodir, 'init', args, External(self.omerodir))
         r = self.psqlc('SELECT currentversion, currentpatch FROM dbpatch '
@@ -87,6 +109,7 @@ class TestDbAdmin(object):
         assert db.check() == DB_UPTODATE
 
     def test_init_from_and_upgrade(self):
+        self.create_db()
         args = Args(self.dbid, omerosql=self.omero531sql)
         DbAdmin(self.omerodir, 'init', args, External(self.omerodir))
         r = self.psqlc('SELECT currentversion, currentpatch FROM dbpatch '
@@ -94,6 +117,17 @@ class TestDbAdmin(object):
         assert r.splitlines() == [b'OMERO5.3|1', b'OMERO5.4|0']
         # Only the temporary omerosql file should be deleted
         assert os.path.exists(self.omero531sql)
+
+        argscheck = Args(self.dbid, dry_run=True)
+        db = DbAdmin(self.omerodir, None, argscheck, External(self.omerodir))
+        assert db.check() == DB_UPTODATE
+
+    def test_justdoit(self):
+        args = Args(self.dbid)
+        DbAdmin(self.omerodir, 'justdoit', args, External(self.omerodir))
+        r = self.psqlc('SELECT currentversion, currentpatch FROM dbpatch '
+                       'ORDER BY id DESC', '-d', self.dbid)
+        assert r.splitlines() == [b'OMERO5.4|0']
 
         argscheck = Args(self.dbid, dry_run=True)
         db = DbAdmin(self.omerodir, None, argscheck, External(self.omerodir))
