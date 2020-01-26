@@ -16,7 +16,10 @@ setuptools.setup(
     long_description_content_type='text/markdown',
     license='GPLv2',
     url='https://github.com/manics/omero-cli-database',
-    packages=setuptools.find_packages(),
+    packages=[
+        'omero_database',
+        'omero.plugins',
+    ],
     setup_requires=[
         'setuptools_scm',
     ],
