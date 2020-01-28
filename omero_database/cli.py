@@ -38,13 +38,6 @@ class DatabaseControl(BaseControl):
             help="Ignore the database settings in omero config")
 
         parser.add_argument(
-            '--adminuser',
-            help="PostgreSQL admin username")
-        parser.add_argument(
-            '--adminpass',
-            help="PostgreSQL admin password")
-
-        parser.add_argument(
             '--verbose', '-v', action='count', default=0,
             help='Increae verbosity (can be used multiple times)')
 
@@ -74,12 +67,7 @@ class DatabaseControl(BaseControl):
 
         parser_init = parser.add(
             sub, self.init, 'Initialise a database')
-        parser_init.add_argument(
-            "--omerosql",
-            help="OMERO database SQL initialisation file")
-        parser_init.add_argument(
-            '--rootpass', default='omero',
-            help="OMERO admin password")
+
         parser_init.set_defaults(dbcommand='init')
 
         parser_upgrade = parser.add(
@@ -94,6 +82,24 @@ class DatabaseControl(BaseControl):
             sub, self.dump, 'Dump a database')
         parser_dump.add_argument('--dumpfile', help='Database dump file')
         parser_dump.set_defaults(dbcommand='dump')
+
+        # Arguments common to multiple sub-parsers
+
+        for subp in (parser_init, parser_justdoit):
+            subp.add_argument(
+                "--omerosql",
+                help="OMERO database SQL initialisation file")
+            subp.add_argument(
+                '--rootpass', default='omero',
+                help="OMERO admin password")
+
+        for subp in (parser_create, parser_justdoit):
+            subp.add_argument(
+                '--adminuser',
+                help="PostgreSQL admin username")
+            subp.add_argument(
+                '--adminpass',
+                help="PostgreSQL admin password")
 
     def create(self, args):
         return self.execute(args)

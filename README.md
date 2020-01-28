@@ -19,7 +19,7 @@ This will create, initialise or upgrade your OMERO database if necessary, otherw
 
 If the PostgreSQL user or database do not exist you may need to pass admin credentials so the plugin can create them:
 ```
-omero database --adminuser postgres-admin --adminpass secret justdoit
+omero database justdoit --adminuser postgres-admin --adminpass secret
 ```
 
 If you want more control see the help output for other sub-commands.
