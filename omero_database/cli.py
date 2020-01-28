@@ -7,6 +7,7 @@ from .external import External
 from .db import (
     DbAdmin,
     DB_INIT_NEEDED,
+    DB_NO_CONNECTION,
     DB_UPGRADE_NEEDED,
     DB_UPTODATE,
     Stop,
@@ -49,21 +50,26 @@ class DatabaseControl(BaseControl):
 
         parser.add_argument(
             '-n', '--dry-run', action='store_true', help=(
-                "Simulation/check mode. In 'upgrade' mode exits with code {} "
-                "if an upgrade is required, {} if database isn't initialised, "
-                "{} if database is up-to-date.".format(
-                    DB_UPGRADE_NEEDED, DB_INIT_NEEDED, DB_UPTODATE)))
+                "Simulation/check mode. In 'upgrade' mode exits with code "
+                "{}:upgrade required "
+                "{}:database isn't initialised "
+                "{}:unable to connect to database "
+                "{}:database is up-to-date.".format(
+                    DB_UPGRADE_NEEDED,
+                    DB_INIT_NEEDED,
+                    DB_NO_CONNECTION,
+                    DB_UPTODATE)))
 
         sub = parser.sub()
 
         parser_justdoit = parser.add(
             sub, self.justdoit,
-            'Create, initialise and upgrade a database if necessary')
+            'Create, initialise and/or upgrade a database if necessary')
         parser_justdoit.set_defaults(dbcommand='justdoit')
 
         parser_create = parser.add(
             sub, self.create,
-            'Create, initialise and upgrade a database if necessary')
+            'Create a new PostgreSQL user and database if necessary')
         parser_create.set_defaults(dbcommand='create')
 
         parser_init = parser.add(
