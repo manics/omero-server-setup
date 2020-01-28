@@ -47,8 +47,8 @@ class TestDbAdmin(object):
     def setup_method(self, method):
         self.dbid = 'x' + str(uuid4()).replace('-', '')
         self.omerodir = os.getenv('OMERODIR')
-        self.omero531sql = os.path.join(
-            os.path.dirname(__file__), '..', 'resources', 'OMERO5.3__1.sql')
+        self.omero440sql = os.path.join(
+            os.path.dirname(__file__), '..', 'resources', 'OMERO4.4__0.sql')
 
     def teardown_method(self, method):
         self.psqlc("DROP DATABASE IF EXISTS {0};")
@@ -80,7 +80,7 @@ class TestDbAdmin(object):
         self.create_db()
         assert db.check() == DB_INIT_NEEDED
 
-        self.psqlc(None, '-d', self.dbid, '-f', self.omero531sql,
+        self.psqlc(None, '-d', self.dbid, '-f', self.omero440sql,
                    '-U', self.dbid, admin=False)
         assert db.check() == DB_UPGRADE_NEEDED
 
@@ -110,13 +110,20 @@ class TestDbAdmin(object):
 
     def test_init_from_and_upgrade(self):
         self.create_db()
-        args = Args(self.dbid, omerosql=self.omero531sql)
+        args = Args(self.dbid, omerosql=self.omero440sql)
         DbAdmin(self.omerodir, 'init', args, External(self.omerodir))
         r = self.psqlc('SELECT currentversion, currentpatch FROM dbpatch '
                        'ORDER BY id ASC', '-d', self.dbid)
-        assert r.splitlines() == [b'OMERO5.3|1', b'OMERO5.4|0']
+        assert r.splitlines() == [
+            b'OMERO4.4|0',
+            b'OMERO5.0|0',
+            b'OMERO5.1|1',
+            b'OMERO5.2|0',
+            b'OMERO5.3|0',
+            b'OMERO5.4|0',
+        ]
         # Only the temporary omerosql file should be deleted
-        assert os.path.exists(self.omero531sql)
+        assert os.path.exists(self.omero440sql)
 
         argscheck = Args(self.dbid, dry_run=True)
         db = DbAdmin(self.omerodir, None, argscheck, External(self.omerodir))
