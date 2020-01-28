@@ -24,7 +24,8 @@ class Args(object):
     def __init__(self, dbid, **kwargs):
         default_args = dict(
             dbcommand=None,
-            no_db_config=False,
+            # Ignore config.xml, use our test credentials
+            no_db_config=True,
             dry_run=False,
             omerosql=None,
             rootpass='omero',
@@ -139,3 +140,11 @@ class TestDbAdmin(object):
         argscheck = Args(self.dbid, dry_run=True)
         db = DbAdmin(self.omerodir, None, argscheck, External(self.omerodir))
         assert db.check() == DB_UPTODATE
+
+    def test_dump(self, tmpdir):
+        dumpfile = str(tmpdir.join('test.pgdump'))
+        self.create_db()
+        args = Args(self.dbid, dumpfile=dumpfile)
+        DbAdmin(self.omerodir, 'dump', args, External(self.omerodir))
+        with open(dumpfile, 'rb') as f:
+            assert f.read(5) == b'PGDMP'
