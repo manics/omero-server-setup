@@ -308,6 +308,7 @@ class DbAdmin(object):
         db = {
             'name': self.args.dbname,
             'host': self.args.dbhost,
+            'port': self.args.dbport,
             'user': self.args.dbuser,
             'pass': self.args.dbpass
         }
@@ -351,6 +352,7 @@ class DbAdmin(object):
             '-v', 'ON_ERROR_STOP=on',
             '-w', '-A', '-t',
             '-h', db['host'],
+            '-p', db['port'],
             '-U', db['user'],
         ]
         if not admin:

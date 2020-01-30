@@ -23,7 +23,9 @@ class DatabaseControl(BaseControl):
         parser.add_argument(
             '--dbhost', default='localhost',
             help="Hostname of the OMERO database server")
-        # No default dbname to prevent inadvertent upgrading of databases
+        parser.add_argument(
+            '--dbport', default='5432',
+            help="Port of the OMERO database")
         parser.add_argument(
             '--dbname', default='omero',
             help="Name of the OMERO database")

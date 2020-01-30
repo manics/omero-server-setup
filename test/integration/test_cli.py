@@ -17,7 +17,8 @@ from omero_database.external import External
 
 
 DB_ADMIN_USER = os.getenv('POSTGRES_USER', 'postgres')
-DB_HOST = os.getenv('POSTGRES_HOST', 'localhost')
+DB_HOST, _, DB_PORT = os.getenv(
+    'POSTGRES_HOST', 'localhost:5432').partition(':')
 
 
 class Args(object):
@@ -30,6 +31,7 @@ class Args(object):
             omerosql=None,
             rootpass='omero',
             dbname=dbid,
+            dbport=DB_PORT,
             dbuser=dbid,
             dbhost=DB_HOST,
             dbpass=dbid,
@@ -63,6 +65,8 @@ class TestDbAdmin(object):
         cmd = ['psql']
         if DB_HOST:
             cmd += ['-h', DB_HOST]
+        if DB_PORT:
+            cmd += ['-p', DB_PORT]
         if admin:
             cmd += ['-U', DB_ADMIN_USER]
         cmd += ['-At'] + list(args)

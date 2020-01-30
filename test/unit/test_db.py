@@ -374,6 +374,7 @@ class TestDb(object):
         db = {
             'name': '%sname' % prefix,
             'host': '%shost' % prefix,
+            'port': str(5432 + sum(prefix.encode())),
             'user': '%suser' % prefix,
             'pass': '%spass' % prefix,
         }
@@ -385,9 +386,14 @@ class TestDb(object):
     @pytest.mark.parametrize('noconfig', [True, False])
     def test_get_db_args_env(self, dbname, hasconfig, noconfig):
         ext = self.mox.CreateMock(external.External)
-        args = self.Args({'dbhost': 'host', 'dbname': dbname,
-                          'dbuser': 'user', 'dbpass': 'pass',
-                          'no_db_config': noconfig})
+        args = self.Args({
+            'dbhost': 'host',
+            'dbport': '5432',
+            'dbname': dbname,
+            'dbuser': 'user',
+            'dbpass': 'pass',
+            'no_db_config': noconfig
+        })
         db = self.PartialMockDb(args, ext)
         self.mox.StubOutWithMock(db.external, 'get_config')
         self.mox.StubOutWithMock(os.environ, 'copy')
@@ -402,6 +408,7 @@ class TestDb(object):
             if hasconfig:
                 cfg = {
                     'omero.db.host': 'exthost',
+                    'omero.db.port': '5769',
                     'omero.db.user': 'extuser',
                     'omero.db.pass': 'extpass',
                 }
@@ -433,6 +440,7 @@ class TestDb(object):
             '-v', 'ON_ERROR_STOP=on',
             '-w', '-A', '-t',
             '-h', 'host',
+            '-p', '5432',
             '-U', 'user',
             '-d', 'name',
             'arg1', 'arg2']
