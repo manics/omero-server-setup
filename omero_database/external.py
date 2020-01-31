@@ -119,6 +119,6 @@ class External(object):
         Runs an OMERO CLI command
         """
         assert isinstance(command, list)
-        log.info('Running omero:', ' '.join(command))
+        log.info('Running omero: %s', ' '.join(command))
         return self.cli.invoke(command)
         # TODO: capturestd=True

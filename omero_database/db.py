@@ -158,22 +158,22 @@ class DbAdmin(object):
 
         self.external = external
 
+        psqlv = self.psql(version=True)
+        log.info('psql version: %s', psqlv)
+
         if command in (
+            'createconfig',
+
             'create',
             'dump',
             'init',
             'justdoit',
             'upgrade',
-        ):
-            psqlv = self.psql('--version')
-            log.info('psql version: %s', psqlv)
-            getattr(self, command)()
-        elif command in (
-            'createconfig',
-            'pg_initdb',
-            'pg_start',
-            'pg_stop',
-            'pg_restart',
+
+            'initdb',
+            'start',
+            'stop',
+            'restart',
         ):
             getattr(self, command)()
         elif command is not None:
@@ -187,8 +187,8 @@ class DbAdmin(object):
             raise Stop(DB_NO_CONNECTION, 'Database connection check failed')
 
     def choose_omero_data_home(self):
-        if os.path.exists('/OMERO'):
-            return '/OMERO'
+        # if os.path.exists('/OMERO'):
+        #     return '/OMERO'
         parent = os.getenv('CONDA_PREFIX', os.getenv('HOME'))
         if not parent:
             raise Exception(
@@ -399,23 +399,27 @@ class DbAdmin(object):
                     self.args, argname) is not None:
                 created[cfgkey] = getattr(self.args, argname)
             elif default is None:
-                raise Exception('No configuration value for {}'.format(cfgkey))
+                raise Exception(
+                    'No configuration value for {}'.format(cfgkey))
             else:
                 created[cfgkey] = default
             log.debug('%s=%s', cfgkey, created[cfgkey])
 
+        update_value('omero.db.name', 'dbname', 'omero')
+        update_value('omero.db.host', 'dbhost', 'localhost')
+        update_value('omero.db.port', 'dbport', '5432')
+        update_value('omero.db.user', 'dbuser', 'omero')
+        update_value('omero.db.pass', 'dbpass', 'omero')
+
+        update_value('omero.data.dir', 'data_dir', '/OMERO')
+        if created['omero.data.dir'].lower() == 'auto':
+            created['omero.data.dir'] = self.choose_omero_data_home()
+
         if postgres:
-            update_value('omero.data.dir', 'data_dir',
-                         self.choose_omero_data_home())
             update_value('postgres.data.dir', '',
                          os.path.join(created['omero.data.dir'], 'pgdata'))
-        update_value('omero.db.name', 'dbname')
-        update_value('omero.db.host', 'dbhost')
-        update_value('omero.db.port', 'dbport')
-        update_value('omero.db.user', 'dbuser')
-        update_value('omero.db.pass', 'dbpass')
 
-        # TODO: Set to a non-standadr port if we're controlling postgres?
+        # TODO: Set to a non-standard port if we're controlling postgres?
         # if created.get('postgres.data.dir'):
         #     created['omero.db.port'] = str(randint(30000, 60000))
 
@@ -454,10 +458,18 @@ class DbAdmin(object):
                 env['PGPASSWORD'] = self.args.adminpass
         return db, env
 
-    def psql(self, *psqlargs, admin=False):
+    def psql(self, *psqlargs, admin=False, version=False):
         """
         Run a psql command
         """
+        if version:
+            stdout, stderr = external.run(
+                'psql', ['--version'], capturestd=True)
+            if stderr:
+                log.warning('stderr: %s', stderr)
+            log.debug('stdout: %s', stdout)
+            return stdout.decode()
+
         db, env = self.get_db_args_env(admin=admin)
 
         args = [
@@ -467,6 +479,8 @@ class DbAdmin(object):
             '-p', db['port'],
             '-U', db['user'],
         ]
+        if admin:
+            args += ['-d', 'postgres']
         if not admin:
             args += ['-d', db['name']]
         args += list(psqlargs)
@@ -507,11 +521,11 @@ class DbAdmin(object):
                 raise Exception('Property {} required'.format(required))
         return cfgmap
 
-    def pg_initdb(self):
+    def initdb(self):
         stdout = self.pg_ctl('initdb', '-o', '--encoding=UTF8')
         log.info(stdout)
 
-    def pg_start(self, restart=False):
+    def start(self, restart=False):
         cfg = self.get_and_check_config()
         logfile = os.path.join(cfg['postgres.data.dir'], 'postgres.log')
         stdout = self.pg_ctl(
@@ -521,12 +535,12 @@ class DbAdmin(object):
         )
         log.info(stdout)
 
-    def pg_stop(self):
+    def stop(self):
         stdout = self.pg_ctl('stop')
         log.info(stdout)
 
-    def pg_restart(self):
-        self.pg_start(restart=True)
+    def restart(self):
+        self.start(restart=True)
 
     def pg_ctl(self, *args):
         cfg = self.get_and_check_config()

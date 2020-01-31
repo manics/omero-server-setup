@@ -1,18 +1,45 @@
-# OMERO database management plugin
+# OMERO setup and database management plugin
 [![Build Status](https://travis-ci.com/manics/omero-cli-database.svg?branch=master)](https://travis-ci.com/manics/omero-cli-database)
 
-Create, initialise and upgrade OMERO databases.
+Configure OMERO and manage a PostgreSQL database
 
 
 ## Usage
 
 Set the `OMERODIR` environment variable to the location of OMERO.server.
 
-If you have configured OMERO.server with the database configuration details this plugin will use them, otherwise you can pass all parameters on the command line (see `omero database --help` for the list of parameters).
+### OMERO Configuration
+
+If you are setting up a new OMERO.server run:
+```
+omero setup -vn createconfig --data-dir auto
+```
+If you do not have a running PostgreSQL server and would like this plugin to take care or starting one include the `--manage-postgres` flag.
+A `pgdata` directory will be created inside you OMERO data directory for PostgreSQL data.
+```
+omero setup -vn createconfig --manage-postgres --data-dir auto
+```
+
+
+### PostgreSQL server
+
+If you already have a PostgreSQL server skip this section.
+If you selected the `--manage-postgres` when configuring OMERO and have not previously setup PostgreSQL run:
+```
+omero setup initdb
+omero setup start
+```
+To stop the PostgreSQL server later run
+```
+omero setup stop
+```
+
+
+### OMERO database setup
 
 To magically "do the right thing" run:
 ```
-omero database justdoit
+omero setup justdoit --adminuser postgres
 ```
 
 This will create, initialise or upgrade your OMERO database if necessary, otherwise it will do nothing.
@@ -23,6 +50,14 @@ omero database justdoit --adminuser postgres-admin --adminpass secret
 ```
 
 If you want more control see the help output for other sub-commands.
+
+
+### Start OMERO
+
+OMERO should be ready to start! Run:
+```
+omero admin start
+```
 
 
 ## Developer notes

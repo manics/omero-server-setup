@@ -16,31 +16,51 @@ from .db import (
 DEFAULT_LOGLEVEL = logging.WARNING
 
 
-class DatabaseControl(BaseControl):
+def _omerodir():
+    omerodir = os.getenv('OMERODIR')
+    if not omerodir or not os.path.isdir(omerodir):
+        raise Stop(100, 'OMERODIR not set')
+    return omerodir
+
+
+def _add_db_arguments(parser):
+    parser.add_argument(
+        '--dbhost', default=None,
+        help="Hostname of the OMERO database server")
+    parser.add_argument(
+        '--dbport', default=None,
+        help="Port of the OMERO database")
+    parser.add_argument(
+        '--dbname', default=None,
+        help="Name of the OMERO database")
+    parser.add_argument(
+        '--dbuser', default=None,
+        help="Username for connecting to the OMERO database")
+    parser.add_argument(
+        '--dbpass', default=None,
+        help="Password for connecting to the OMERO database")
+
+
+def _subparser(sub, name, func, help, **kwargs):
+    parser = sub.add_parser(
+        name, help=help, description=help)
+    parser.set_defaults(func=func, **kwargs)
+    parser.set_defaults(command=name)
+    return parser
+
+
+class SetupControl(BaseControl):
 
     def _configure(self, parser):
-        parser.add_argument(
-            '--dbhost', default='localhost',
-            help="Hostname of the OMERO database server")
-        parser.add_argument(
-            '--dbport', default='5432',
-            help="Port of the OMERO database")
-        parser.add_argument(
-            '--dbname', default='omero',
-            help="Name of the OMERO database")
-        parser.add_argument(
-            '--dbuser', default='omero',
-            help="Username for connecting to the OMERO database")
-        parser.add_argument(
-            '--dbpass', default='omero',
-            help="Password for connecting to the OMERO database")
+        _add_db_arguments(parser)
+
         parser.add_argument(
             "--no-db-config", action="store_true",
             help="Ignore the database settings in omero config")
 
         parser.add_argument(
             '--verbose', '-v', action='count', default=0,
-            help='Increae verbosity (can be used multiple times)')
+            help='Increase verbosity (can be used multiple times)')
 
         parser.add_argument(
             '-n', '--dry-run', action='store_true', help=(
@@ -56,48 +76,37 @@ class DatabaseControl(BaseControl):
 
         sub = parser.sub()
 
-        # parser.add uses the name of the second argument in the help text,
-        # so it's not possible to use the same wrapper function
-
-        parser_createconfig = parser.add(
-            sub, self.createconfig,
-            'Generate an OMERO database configuration file. '
-            'Pass --manage-postgres to also also manage the PostgreSQL'
-            'server.')
+        parser_createconfig = _subparser(
+            sub, 'createconfig', self.execute,
+            'Update the OMERO configuration file. See --help for options. '
+            'This will NOT modify existing configuration keys. '
+            'To create a clean configuration first delete etc/grid/config.xml '
+            'from your OMERO.server directory.')
         parser_createconfig.add_argument(
             '--manage-postgres', action='store_true',
             help='Manage a local PostgreSQL server for OMERO only')
         parser_createconfig.add_argument(
-            '--data-dir', help='OMERO data directory')
-        parser_createconfig.set_defaults(dbcommand='createconfig')
+            '--data-dir', default=None, help=(
+                'OMERO data directory, use "auto" to use $CONDA_PREFIX/OMERO '
+                'when running in Conda, $HOME/OMERO if not'))
 
-        parser_justdoit = parser.add(
-            sub, self.justdoit,
+        parser_justdoit = _subparser(
+            sub, 'justdoit', self.execute,
             'Create, initialise and/or upgrade a database if necessary')
-        parser_justdoit.set_defaults(dbcommand='justdoit')
 
-        parser_create = parser.add(
-            sub, self.create,
+        parser_create = _subparser(
+            sub, 'create', self.execute,
             'Create a new PostgreSQL user and database if necessary')
-        parser_create.set_defaults(dbcommand='create')
 
-        parser_init = parser.add(
-            sub, self.init, 'Initialise a database')
+        parser_init = _subparser(
+            sub, 'init', self.execute, 'Initialise a database')
 
-        parser_init.set_defaults(dbcommand='init')
+        _subparser(
+            sub, 'upgrade', self.execute, 'Upgrade a database')
 
-        parser_upgrade = parser.add(
-            sub, self.upgrade, 'Upgrade a database')
-        parser_upgrade.set_defaults(dbcommand='upgrade')
-
-        parser_upgrade = parser.add(
-            sub, self.upgrade, 'Upgrade a database')
-        parser_upgrade.set_defaults(dbcommand='upgrade')
-
-        parser_dump = parser.add(
-            sub, self.dump, 'Dump a database')
+        parser_dump = _subparser(
+            sub, 'dump', self.execute, 'Dump a database')
         parser_dump.add_argument('--dumpfile', help='Database dump file')
-        parser_dump.set_defaults(dbcommand='dump')
 
         # Arguments common to multiple sub-parsers
 
@@ -117,23 +126,21 @@ class DatabaseControl(BaseControl):
                 '--adminpass',
                 help="PostgreSQL admin password")
 
-    def createconfig(self, args):
-        return self.execute(args)
+        _subparser(
+            sub, 'initdb', self.execute,
+            'Initialise a new local PostgreSQL server')
 
-    def create(self, args):
-        return self.execute(args)
+        _subparser(
+            sub, 'start', self.execute,
+            'Start a local PostgreSQL server')
 
-    def init(self, args):
-        return self.execute(args)
+        _subparser(
+            sub, 'stop', self.execute,
+            'Stop a local PostgreSQL server')
 
-    def upgrade(self, args):
-        return self.execute(args)
-
-    def dump(self, args):
-        return self.execute(args)
-
-    def justdoit(self, args):
-        return self.execute(args)
+        _subparser(
+            sub, 'restart', self.execute,
+            'Restart a local PostgreSQL server')
 
     def execute(self, args):
 
@@ -141,68 +148,11 @@ class DatabaseControl(BaseControl):
         logging.getLogger('omero_database').setLevel(level=loglevel)
 
         # Is this the same as self.dir?
-        omerodir = os.getenv('OMERODIR')
+        omerodir = _omerodir()
         try:
-            DbAdmin(omerodir, args.dbcommand, args, External(omerodir))
+            DbAdmin(omerodir, args.command, args, External(omerodir))
         except Stop as e:
             # client = self.ctx.conn(args)
             self.ctx.die(e.args[0], e.args[1])
             # self.ctx.set("last.upload.id", obj.id.val)
             # self.ctx.out("OriginalFile:%s" % obj_ids)
-
-
-class PostgresControl(BaseControl):
-
-    def _configure(self, parser):
-        parser.add_argument(
-            '--verbose', '-v', action='count', default=0,
-            help='Increae verbosity (can be used multiple times)')
-
-        sub = parser.sub()
-
-        # parser.add uses the name of the second argument in the help text,
-        # so it's not possible to use the same wrapper function
-
-        parser_initdb = parser.add(
-            sub, self.initdb,
-            'Initialise a new local PostgreSQL server')
-        parser_initdb.set_defaults(dbcommand='pg_initdb')
-
-        parser_start = parser.add(
-            sub, self.start,
-            'Start a local PostgreSQL server')
-        parser_start.set_defaults(dbcommand='pg_start')
-
-        parser_stop = parser.add(
-            sub, self.stop,
-            'Stop a local PostgreSQL server')
-        parser_stop.set_defaults(dbcommand='pg_stop')
-
-        parser_restart = parser.add(
-            sub, self.restart,
-            'Restart a local PostgreSQL server')
-        parser_restart.set_defaults(dbcommand='pg_restart')
-
-    def initdb(self, args):
-        return self.execute(args)
-
-    def start(self, args):
-        return self.execute(args)
-
-    def stop(self, args):
-        return self.execute(args)
-
-    def restart(self, args):
-        return self.execute(args)
-
-    def execute(self, args):
-
-        loglevel = max(DEFAULT_LOGLEVEL - 10 * args.verbose, 10)
-        logging.getLogger('omero_database').setLevel(level=loglevel)
-
-        # Is this the same as self.dir?
-        omerodir = os.getenv('OMERODIR')
-        try:
-            DbAdmin(omerodir, args.dbcommand, args, External(omerodir))
-        except Stop as e:
-            self.ctx.die(e.args[0], e.args[1])
