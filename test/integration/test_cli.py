@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
+from argparse import Namespace
 import os
 from subprocess import check_output
 from uuid import uuid4
@@ -21,9 +22,9 @@ DB_HOST, _, DB_PORT = os.getenv(
     'POSTGRES_HOST', 'localhost:5432').partition(':')
 
 
-class Args(object):
+class Args(Namespace):
     def __init__(self, dbid, **kwargs):
-        default_args = dict(
+        args = dict(
             dbcommand=None,
             # Ignore config.xml, use our test credentials
             no_db_config=True,
@@ -38,11 +39,8 @@ class Args(object):
             adminuser=DB_ADMIN_USER,
             adminpass=DB_ADMIN_USER,
         )
-
-        for k, v in default_args.items():
-            setattr(self, k, v)
-        for k, v in kwargs.items():
-            setattr(self, k, v)
+        args.update(kwargs)
+        super().__init__(**args)
 
 
 class TestDbAdmin(object):

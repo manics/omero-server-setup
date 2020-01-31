@@ -24,9 +24,12 @@ class RunException(Exception):
         self.stderr = stderr
 
     def fullstr(self):
+        def format(std):
+            if std:
+                return std.decode(errors='replace')
+            return ''
         return '%s\n  stdout: %s\n  stderr: %s' % (
-            self.shortstr(), self.stdout.decode(errors='replace'),
-            self.stderr.decode(errors='replace'))
+            self.shortstr(), format(self.stdout), format(self.stderr))
 
     def shortstr(self):
         return '%s\n  command: %s %s\n  return code: %d' % (

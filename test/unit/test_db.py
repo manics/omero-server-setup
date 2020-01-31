@@ -22,6 +22,7 @@
 import pytest
 from mox3 import mox
 
+from argparse import Namespace
 import os
 import re
 
@@ -85,10 +86,9 @@ def test_parse_schema_files():
 
 class TestDb(object):
 
-    class Args(object):
+    class Args(Namespace):
         def __init__(self, args):
-            for k, v in args.items():
-                setattr(self, k, v)
+            super().__init__(**args)
 
     class PartialMockDb(DbAdmin):
 

@@ -6,8 +6,9 @@ omero database management plugin
 
 import sys
 from omero.cli import CLI
-from omero_database.cli import DatabaseControl, HELP
+from omero_database.cli import DatabaseControl
 
+HELP = 'Manage the OMERO PostgreSQL database'
 try:
     register("database", DatabaseControl, HELP) # noqa
 except NameError:
