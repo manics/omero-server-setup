@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 
+from argparse import ArgumentParser
 import logging
 import os
 from omero.cli import BaseControl
-from .external import External
+from .createconfig import CreateConfig
 from .db import (
     DbAdmin,
     DB_INIT_NEEDED,
@@ -23,27 +24,9 @@ def _omerodir():
     return omerodir
 
 
-def _add_db_arguments(parser):
-    parser.add_argument(
-        '--dbhost', default=None,
-        help="Hostname of the OMERO database server")
-    parser.add_argument(
-        '--dbport', default=None,
-        help="Port of the OMERO database")
-    parser.add_argument(
-        '--dbname', default=None,
-        help="Name of the OMERO database")
-    parser.add_argument(
-        '--dbuser', default=None,
-        help="Username for connecting to the OMERO database")
-    parser.add_argument(
-        '--dbpass', default=None,
-        help="Password for connecting to the OMERO database")
-
-
-def _subparser(sub, name, func, help, **kwargs):
+def _subparser(sub, name, func, parents, help, **kwargs):
     parser = sub.add_parser(
-        name, help=help, description=help)
+        name, parents=parents, help=help, description=help)
     parser.set_defaults(func=func, **kwargs)
     parser.set_defaults(command=name)
     return parser
@@ -52,17 +35,14 @@ def _subparser(sub, name, func, help, **kwargs):
 class SetupControl(BaseControl):
 
     def _configure(self, parser):
-        _add_db_arguments(parser)
+        # Arguments common to multiple sub-parsers
 
-        parser.add_argument(
-            "--no-db-config", action="store_true",
-            help="Ignore the database settings in omero config")
-
-        parser.add_argument(
+        common_parser = ArgumentParser(add_help=False)
+        common_parser.add_argument(
             '--verbose', '-v', action='count', default=0,
             help='Increase verbosity (can be used multiple times)')
 
-        parser.add_argument(
+        common_parser.add_argument(
             '-n', '--dry-run', action='store_true', help=(
                 "Simulation/check mode. In 'upgrade' mode exits with code "
                 "{}:upgrade required "
@@ -74,10 +54,43 @@ class SetupControl(BaseControl):
                     DB_NO_CONNECTION,
                     DB_UPTODATE)))
 
+        db_parser = ArgumentParser(add_help=False)
+        db_parser.add_argument(
+            '--dbhost', default=None,
+            help="Hostname of the OMERO database server")
+        db_parser.add_argument(
+            '--dbport', default=None,
+            help="Port of the OMERO database")
+        db_parser.add_argument(
+            '--dbname', default=None,
+            help="Name of the OMERO database")
+        db_parser.add_argument(
+            '--dbuser', default=None,
+            help="Username for connecting to the OMERO database")
+        db_parser.add_argument(
+            '--dbpass', default=None,
+            help="Password for connecting to the OMERO database")
+
+        db_parser.add_argument(
+            "--no-db-config", action="store_true",
+            help="Ignore the database settings in omero config")
+
+        omerosql_parser = ArgumentParser(add_help=False)
+        omerosql_parser.add_argument(
+            "--omerosql", help="OMERO database SQL initialisation file")
+        omerosql_parser.add_argument(
+            '--rootpass', default='omero', help="OMERO admin password")
+
+        pgadmin_parser = ArgumentParser(add_help=False)
+        pgadmin_parser.add_argument(
+            '--adminuser', help="PostgreSQL admin username")
+        pgadmin_parser.add_argument(
+            '--adminpass', help="PostgreSQL admin password")
+
         sub = parser.sub()
 
         parser_createconfig = _subparser(
-            sub, 'createconfig', self.execute,
+            sub, 'createconfig', self.createconfig, [common_parser, db_parser],
             'Update the OMERO configuration file. See --help for options. '
             'This will NOT modify existing configuration keys. '
             'To create a clean configuration first delete etc/grid/config.xml '
@@ -89,68 +102,73 @@ class SetupControl(BaseControl):
             '--data-dir', default=None, help=(
                 'OMERO data directory, use "auto" to use $CONDA_PREFIX/OMERO '
                 'when running in Conda, $HOME/OMERO if not'))
+        parser_createconfig.add_argument(
+            '--certs', action='store_true',
+            help='Create self-signed certs instead of using anonymous DH')
+        parser_createconfig.add_argument(
+            '--websockets', action='store_true',
+            help='Enable websockets')
 
-        parser_justdoit = _subparser(
+        _subparser(
             sub, 'justdoit', self.execute,
+            [common_parser, db_parser, omerosql_parser, pgadmin_parser],
             'Create, initialise and/or upgrade a database if necessary')
 
-        parser_create = _subparser(
+        _subparser(
             sub, 'create', self.execute,
+            [common_parser, db_parser, pgadmin_parser],
             'Create a new PostgreSQL user and database if necessary')
 
-        parser_init = _subparser(
-            sub, 'init', self.execute, 'Initialise a database')
+        _subparser(
+            sub, 'init', self.execute,
+            [common_parser, db_parser, omerosql_parser],
+            'Initialise a database')
 
         _subparser(
-            sub, 'upgrade', self.execute, 'Upgrade a database')
+            sub, 'upgrade', self.execute, [common_parser, db_parser],
+            'Upgrade a database')
 
         parser_dump = _subparser(
-            sub, 'dump', self.execute, 'Dump a database')
+            sub, 'dump', self.execute, [common_parser, db_parser],
+            'Dump a database')
         parser_dump.add_argument('--dumpfile', help='Database dump file')
 
-        # Arguments common to multiple sub-parsers
-
-        for subp in (parser_init, parser_justdoit):
-            subp.add_argument(
-                "--omerosql",
-                help="OMERO database SQL initialisation file")
-            subp.add_argument(
-                '--rootpass', default='omero',
-                help="OMERO admin password")
-
-        for subp in (parser_create, parser_justdoit):
-            subp.add_argument(
-                '--adminuser',
-                help="PostgreSQL admin username")
-            subp.add_argument(
-                '--adminpass',
-                help="PostgreSQL admin password")
-
         _subparser(
-            sub, 'pginit', self.execute,
+            sub, 'pginit', self.execute, [common_parser],
             'Initialise a new local PostgreSQL server')
 
         _subparser(
-            sub, 'pgstart', self.execute,
+            sub, 'pgstart', self.execute, [common_parser],
             'Start a local PostgreSQL server')
 
         _subparser(
-            sub, 'pgstop', self.execute,
+            sub, 'pgstop', self.execute, [common_parser],
             'Stop a local PostgreSQL server')
 
         _subparser(
-            sub, 'pgrestart', self.execute,
+            sub, 'pgrestart', self.execute, [common_parser],
             'Restart a local PostgreSQL server')
 
-    def execute(self, args):
-
+    def setup_logging(self, args):
         loglevel = max(DEFAULT_LOGLEVEL - 10 * args.verbose, 10)
         logging.getLogger('omero_database').setLevel(level=loglevel)
+
+    def createconfig(self, args):
+        self.setup_logging(args)
+        omerodir = _omerodir()
+        try:
+            c = CreateConfig(omerodir, args)
+            c.create_or_update_config()
+        except Stop as e:
+            self.ctx.die(e.args[0], e.args[1])
+
+    def execute(self, args):
+        self.setup_logging(args)
 
         # Is this the same as self.dir?
         omerodir = _omerodir()
         try:
-            DbAdmin(omerodir, args.command, args, External(omerodir))
+            DbAdmin(omerodir, args.command, args)
         except Stop as e:
             # client = self.ctx.conn(args)
             self.ctx.die(e.args[0], e.args[1])

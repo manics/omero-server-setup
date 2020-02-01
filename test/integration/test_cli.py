@@ -14,7 +14,6 @@ from omero_database import (
     DB_NO_CONNECTION,
     # Stop,
 )
-from omero_database.external import External
 
 
 DB_ADMIN_USER = os.getenv('POSTGRES_USER', 'postgres')
@@ -76,7 +75,7 @@ class TestDbAdmin(object):
 
     def test_check(self):
         argscheck = Args(self.dbid, dry_run=True)
-        db = DbAdmin(self.omerodir, None, argscheck, External(self.omerodir))
+        db = DbAdmin(self.omerodir, None, argscheck)
 
         assert db.check() == DB_NO_CONNECTION
 
@@ -89,7 +88,7 @@ class TestDbAdmin(object):
 
     def test_create(self):
         args = Args(self.dbid)
-        db = DbAdmin(self.omerodir, 'create', args, External(self.omerodir))
+        db = DbAdmin(self.omerodir, 'create', args)
         assert db.check() == DB_INIT_NEEDED
 
         user = self.psqlc("SELECT 1 FROM pg_roles WHERE rolname='{}';".format(
@@ -102,19 +101,19 @@ class TestDbAdmin(object):
     def test_init(self):
         self.create_db()
         args = Args(self.dbid)
-        DbAdmin(self.omerodir, 'init', args, External(self.omerodir))
+        DbAdmin(self.omerodir, 'init', args)
         r = self.psqlc('SELECT currentversion, currentpatch FROM dbpatch '
                        'ORDER BY id DESC', '-d', self.dbid)
         assert r.splitlines() == [b'OMERO5.4|0']
 
         argscheck = Args(self.dbid, dry_run=True)
-        db = DbAdmin(self.omerodir, None, argscheck, External(self.omerodir))
+        db = DbAdmin(self.omerodir, None, argscheck)
         assert db.check() == DB_UPTODATE
 
     def test_init_from_and_upgrade(self):
         self.create_db()
         args = Args(self.dbid, omerosql=self.omero440sql)
-        DbAdmin(self.omerodir, 'init', args, External(self.omerodir))
+        DbAdmin(self.omerodir, 'init', args)
         r = self.psqlc('SELECT currentversion, currentpatch FROM dbpatch '
                        'ORDER BY id ASC', '-d', self.dbid)
         assert r.splitlines() == [
@@ -129,24 +128,24 @@ class TestDbAdmin(object):
         assert os.path.exists(self.omero440sql)
 
         argscheck = Args(self.dbid, dry_run=True)
-        db = DbAdmin(self.omerodir, None, argscheck, External(self.omerodir))
+        db = DbAdmin(self.omerodir, None, argscheck)
         assert db.check() == DB_UPTODATE
 
     def test_justdoit(self):
         args = Args(self.dbid)
-        DbAdmin(self.omerodir, 'justdoit', args, External(self.omerodir))
+        DbAdmin(self.omerodir, 'justdoit', args)
         r = self.psqlc('SELECT currentversion, currentpatch FROM dbpatch '
                        'ORDER BY id DESC', '-d', self.dbid)
         assert r.splitlines() == [b'OMERO5.4|0']
 
         argscheck = Args(self.dbid, dry_run=True)
-        db = DbAdmin(self.omerodir, None, argscheck, External(self.omerodir))
+        db = DbAdmin(self.omerodir, None, argscheck)
         assert db.check() == DB_UPTODATE
 
     def test_dump(self, tmpdir):
         dumpfile = str(tmpdir.join('test.pgdump'))
         self.create_db()
         args = Args(self.dbid, dumpfile=dumpfile)
-        DbAdmin(self.omerodir, 'dump', args, External(self.omerodir))
+        DbAdmin(self.omerodir, 'dump', args)
         with open(dumpfile, 'rb') as f:
             assert f.read(5) == b'PGDMP'

@@ -54,6 +54,14 @@ class TestExternal(object):
     def teardown_method(self, method):
         self.mox.UnsetStubs()
 
+    @pytest.mark.xfail(reason='Not implemented')
+    def test_get_config(self):
+        assert False
+
+    @pytest.mark.xfail(reason='Not implemented')
+    def test_update_config(self):
+        assert False
+
     def test_omero_cli(self):
         self.mox.StubOutWithMock(self.ext.cli, 'invoke')
         self.ext.cli.invoke(['arg1', 'arg2']).AndReturn(0)

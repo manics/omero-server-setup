@@ -434,7 +434,7 @@ class TestDb(object):
     def test_psql(self):
         db = self.PartialMockDb(None, None)
         self.mox.StubOutWithMock(db, 'get_db_args_env')
-        self.mox.StubOutWithMock(external, 'run')
+        self.mox.StubOutWithMock(omero_database.db, 'run')
 
         psqlargs = [
             '-v', 'ON_ERROR_STOP=on',
@@ -445,8 +445,8 @@ class TestDb(object):
             '-d', 'name',
             'arg1', 'arg2']
         db.get_db_args_env(admin=False).AndReturn(self.create_db_test_params())
-        external.run('psql', psqlargs, capturestd=True,
-                     env={'PGPASSWORD': 'pass'}).AndReturn((b'', b''))
+        omero_database.db.run('psql', psqlargs, capturestd=True,
+                              env={'PGPASSWORD': 'pass'}).AndReturn((b'', b''))
         self.mox.ReplayAll()
 
         db.psql('arg1', 'arg2')
@@ -455,13 +455,13 @@ class TestDb(object):
     def test_pgdump(self):
         db = self.PartialMockDb(None, None)
         self.mox.StubOutWithMock(db, 'get_db_args_env')
-        self.mox.StubOutWithMock(external, 'run')
+        self.mox.StubOutWithMock(omero_database.db, 'run')
 
         pgdumpargs = ['-d', 'name', '-h', 'host', '-U', 'user',
                       '-w', 'arg1', 'arg2']
         db.get_db_args_env().AndReturn(self.create_db_test_params())
-        external.run('pg_dump', pgdumpargs, capturestd=True,
-                     env={'PGPASSWORD': 'pass'}).AndReturn((b'', b''))
+        omero_database.db.run('pg_dump', pgdumpargs, capturestd=True,
+                              env={'PGPASSWORD': 'pass'}).AndReturn((b'', b''))
         self.mox.ReplayAll()
 
         db.pgdump('arg1', 'arg2')

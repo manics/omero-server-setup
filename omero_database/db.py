@@ -7,8 +7,11 @@ import os
 import logging
 import re
 
-from omero.config import ConfigXml
-from . import external
+from .external import (
+    External,
+    run,
+    RunException,
+)
 
 log = logging.getLogger(__name__)
 
@@ -81,89 +84,24 @@ def parse_schema_files(files):
     return f_dict
 
 
-def get_db_args_env(self, ext=None, args=None, admin=False):
-    """
-    Get a dictionary of database connection parameters, and create an
-    environment for running postgres commands.
-    Falls back to omero defaults.
-    """
-    if args:
-        db = {
-            'name': self.args.dbname,
-            'host': self.args.dbhost,
-            'port': self.args.dbport or '5432',
-            'user': self.args.dbuser,
-            'pass': self.args.dbpass
-        }
-    else:
-        if self.args.no_db_config:
-            raise Exception('omero config.xml required')
-        db = {
-            'name': None,
-            'host': None,
-            'port': None,
-            'user': None,
-            'pass': None,
-        }
-
-    try:
-        c = ext.get_config()
-    except Exception as e:
-        log.warning('config.xml not found: %s', e)
-        c = {}
-
-    for k in db:
-        try:
-            db[k] = c['omero.db.%s' % k]
-        except KeyError:
-            log.info(
-                'Failed to lookup parameter omero.db.%s, using %s',
-                k, db[k])
-
-    for k in db:
-        if not db[k]:
-            raise Exception('Database {} required'.format(k))
-
-    try:
-        db['pgdata'] = c['postgres.data.dir']
-    except KeyError:
-        db['pgdata'] = None
-
-    env = os.environ.copy()
-    env['PGPASSWORD'] = db['pass']
-
-    if admin:
-        if self.args.adminuser:
-            db['user'] = self.args.adminuser
-        if self.args.adminpass:
-            db['pass'] = self.args.adminpass
-            env['PGPASSWORD'] = self.args.adminpass
-    return db, env
-
-
 class DbAdmin(object):
 
-    def __init__(self, dir, command, args, external):
+    # def __init__(self, dir, command, args, external):
+    def __init__(self, omerodir, command, args):
 
-        self.dir = dir
+        self.dir = omerodir
         self.args = args
-        log.info("%s: DbAdmin %s ...", self.__class__.__name__, dir)
-
-        # TODO: If the server has already been configured we should use the
-        # OMERO db credentials if not explicitly provided in args
 
         # Server directory
-        if not os.path.exists(dir):
-            raise Exception("%s does not exist!" % dir)
+        if not os.path.exists(self.dir):
+            raise Exception("%s does not exist!" % self.dir)
 
-        self.external = external
+        self.external = External(self.dir)
 
         psqlv = self.psql(version=True)
         log.info('psql version: %s', psqlv)
 
         if command in (
-            'createconfig',
-
             'create',
             'dump',
             'init',
@@ -182,7 +120,7 @@ class DbAdmin(object):
     def check_connection(self):
         try:
             self.psql('-c', r'\conninfo')
-        except external.RunException as e:
+        except RunException as e:
             log.error(e)
             raise Stop(DB_NO_CONNECTION, 'Database connection check failed')
 
@@ -279,7 +217,7 @@ class DbAdmin(object):
             raise e
         try:
             currentsqlv = '%s__%s' % self.get_current_db_version()
-        except external.RunException as e:
+        except RunException as e:
             log.error(e)
             if check:
                 return DB_INIT_NEEDED
@@ -319,11 +257,6 @@ class DbAdmin(object):
 
         if status in (DB_UPGRADE_NEEDED,):
             self.upgrade()
-
-    def createconfig(self):
-        created = self.get_or_create_config(write=not self.args.dry_run,
-                                            postgres=self.args.manage_postgres)
-        log.info('Database configuration: {}'.format(created))
 
     def create(self):
         db, env = self.get_db_args_env()
@@ -381,7 +314,7 @@ class DbAdmin(object):
         if not self.args.dry_run:
             self.pgdump('-Fc', '-f', dumpfile)
 
-    def get_or_create_config(self, write, postgres):
+    def get_config_with_defaults(self):
         if self.args.no_db_config:
             cfgmap = {}
         else:
@@ -411,26 +344,6 @@ class DbAdmin(object):
         update_value('omero.db.user', 'dbuser', 'omero')
         update_value('omero.db.pass', 'dbpass', 'omero')
 
-        update_value('omero.data.dir', 'data_dir', '/OMERO')
-        if created['omero.data.dir'].lower() == 'auto':
-            created['omero.data.dir'] = self.choose_omero_data_home()
-
-        if postgres:
-            update_value('postgres.data.dir', '',
-                         os.path.join(created['omero.data.dir'], 'pgdata'))
-
-        # TODO: Set to a non-standard port if we're controlling postgres?
-        # if created.get('postgres.data.dir'):
-        #     created['omero.db.port'] = str(randint(30000, 60000))
-
-        if write:
-            # TODO: Move to external.save_config()
-            cfg = ConfigXml(os.path.join(
-                self.dir, 'etc', 'grid', 'config.xml'))
-            for k, v in created.items():
-                cfg[k] = v
-            cfg.close()
-
         return created
 
     def get_db_args_env(self, admin=False):
@@ -440,7 +353,7 @@ class DbAdmin(object):
         Falls back to omero defaults.
         """
 
-        cfg = self.get_or_create_config(write=False, postgres=False)
+        cfg = self.get_config_with_defaults()
         db = {}
         for k in ('name', 'host', 'port', 'user', 'pass'):
             db[k] = cfg['omero.db.%s' % k]
@@ -463,7 +376,7 @@ class DbAdmin(object):
         Run a psql command
         """
         if version:
-            stdout, stderr = external.run(
+            stdout, stderr = run(
                 'psql', ['--version'], capturestd=True)
             if stderr:
                 log.warning('stderr: %s', stderr)
@@ -484,7 +397,7 @@ class DbAdmin(object):
         if not admin:
             args += ['-d', db['name']]
         args += list(psqlargs)
-        stdout, stderr = external.run('psql', args, capturestd=True, env=env)
+        stdout, stderr = run('psql', args, capturestd=True, env=env)
         if stderr:
             log.warning('stderr: %s', stderr)
         log.debug('stdout: %s', stdout)
@@ -498,7 +411,7 @@ class DbAdmin(object):
 
         args = ['-d', db['name'], '-h', db['host'], '-U', db['user'], '-w'
                 ] + list(pgdumpargs)
-        stdout, stderr = external.run(
+        stdout, stderr = run(
             'pg_dump', args, capturestd=True, env=env)
         if stderr:
             log.warning('stderr: %s', stderr)
@@ -547,9 +460,9 @@ class DbAdmin(object):
         cfg = self.get_and_check_config()
         pgdata = '--pgdata={}'.format(cfg['postgres.data.dir'])
         try:
-            stdout, stderr = external.run(
+            stdout, stderr = run(
                 'pg_ctl', [pgdata] + list(args), capturestd=capturestd)
-        except external.RunException as e:
+        except RunException as e:
             log.fatal(e)
             raise Stop(10, 'Failed to run pg_ctl {}'.format(args))
         if capturestd:

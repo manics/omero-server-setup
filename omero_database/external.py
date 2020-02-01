@@ -10,7 +10,7 @@ import time
 from omero.cli import CLI
 from omero.config import ConfigXml
 
-log = logging.getLogger('omero_database.external')
+log = logging.getLogger(__name__)
 
 
 class RunException(Exception):
@@ -113,6 +113,12 @@ class External(object):
         cfgdict = configobj.as_map()
         configobj.close()
         return cfgdict
+
+    def update_config(self, newcfg):
+        cfg = ConfigXml(os.path.join(self.dir, 'etc', 'grid', 'config.xml'))
+        for k, v in newcfg.items():
+            cfg[k] = v
+        cfg.close()
 
     def omero_cli(self, command):
         """
