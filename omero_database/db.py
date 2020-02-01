@@ -170,10 +170,10 @@ class DbAdmin(object):
             'justdoit',
             'upgrade',
 
-            'initdb',
-            'start',
-            'stop',
-            'restart',
+            'pginit',
+            'pgstart',
+            'pgstop',
+            'pgrestart',
         ):
             getattr(self, command)()
         elif command is not None:
@@ -521,37 +521,39 @@ class DbAdmin(object):
                 raise Exception('Property {} required'.format(required))
         return cfgmap
 
-    def initdb(self):
-        stdout = self.pg_ctl('initdb', '-o', '--encoding=UTF8')
-        log.info(stdout)
+    def pginit(self):
+        self.pg_ctl(
+            'initdb',
+            '-o', '--encoding=UTF-8',
+            '-o', '--username=postgres',
+        )
 
-    def start(self, restart=False):
+    def pgstart(self, restart=False):
         cfg = self.get_and_check_config()
         logfile = os.path.join(cfg['postgres.data.dir'], 'postgres.log')
-        stdout = self.pg_ctl(
+        self.pg_ctl(
             'restart' if restart else 'start',
             '--log={}'.format(logfile),
             '-o', '-p {}'.format(cfg['omero.db.port'])
         )
-        log.info(stdout)
 
-    def stop(self):
-        stdout = self.pg_ctl('stop')
-        log.info(stdout)
+    def pgstop(self):
+        self.pg_ctl('stop')
 
-    def restart(self):
+    def pgrestart(self):
         self.start(restart=True)
 
-    def pg_ctl(self, *args):
+    def pg_ctl(self, *args, capturestd=False):
         cfg = self.get_and_check_config()
         pgdata = '--pgdata={}'.format(cfg['postgres.data.dir'])
         try:
             stdout, stderr = external.run(
-                'pg_ctl', [pgdata] + list(args), capturestd=False)
+                'pg_ctl', [pgdata] + list(args), capturestd=capturestd)
         except external.RunException as e:
             log.fatal(e)
             raise Stop(10, 'Failed to run pg_ctl {}'.format(args))
-        # if stderr:
-        #     log.warning('stderr: %s', stderr)
-        # log.debug('stdout: %s', stdout)
-        # return stdout.decode()
+        if capturestd:
+            if stderr:
+                log.warning('stderr: %s', stderr)
+            log.debug('stdout: %s', stdout)
+            return stdout.decode()

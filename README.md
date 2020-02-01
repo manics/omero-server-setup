@@ -26,12 +26,12 @@ omero setup -vn createconfig --manage-postgres --data-dir auto
 If you already have a PostgreSQL server skip this section.
 If you selected the `--manage-postgres` when configuring OMERO and have not previously setup PostgreSQL run:
 ```
-omero setup initdb
-omero setup start
+omero setup pginit
+omero setup pgstart
 ```
 To stop the PostgreSQL server later run
 ```
-omero setup stop
+omero setup pgstop
 ```
 
 

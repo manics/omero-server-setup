@@ -127,19 +127,19 @@ class SetupControl(BaseControl):
                 help="PostgreSQL admin password")
 
         _subparser(
-            sub, 'initdb', self.execute,
+            sub, 'pginit', self.execute,
             'Initialise a new local PostgreSQL server')
 
         _subparser(
-            sub, 'start', self.execute,
+            sub, 'pgstart', self.execute,
             'Start a local PostgreSQL server')
 
         _subparser(
-            sub, 'stop', self.execute,
+            sub, 'pgstop', self.execute,
             'Stop a local PostgreSQL server')
 
         _subparser(
-            sub, 'restart', self.execute,
+            sub, 'pgrestart', self.execute,
             'Restart a local PostgreSQL server')
 
     def execute(self, args):
