@@ -6,7 +6,7 @@ import os
 from subprocess import check_output
 from uuid import uuid4
 
-from omero_database import (
+from omero_server_setup import (
     DbAdmin,
     DB_INIT_NEEDED,
     DB_UPGRADE_NEEDED,

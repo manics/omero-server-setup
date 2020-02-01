@@ -1,7 +1,7 @@
-# OMERO setup and database management plugin
+# OMERO server setup and database management plugin
 [![Build Status](https://travis-ci.com/manics/omero-cli-database.svg?branch=master)](https://travis-ci.com/manics/omero-cli-database)
 
-Configure OMERO and manage a PostgreSQL database
+Configure OMERO.server and manage a PostgreSQL database
 
 
 ## Usage

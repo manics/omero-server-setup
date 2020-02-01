@@ -6,7 +6,7 @@ OMERO setup and database management plugin
 
 import sys
 from omero.cli import CLI
-from omero_database.cli import SetupControl
+from omero_server_setup.cli import SetupControl
 
 HELP = 'Configure OMERO and a PostgreSQL database'
 try:

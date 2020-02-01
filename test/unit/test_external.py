@@ -25,7 +25,7 @@ from mox3 import mox
 import subprocess
 import tempfile
 
-from omero_database import external
+from omero_server_setup import external
 
 
 class TestRunException(object):

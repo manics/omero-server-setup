@@ -155,7 +155,7 @@ class SetupControl(BaseControl):
 
     def setup_logging(self, args):
         loglevel = max(DEFAULT_LOGLEVEL - 10 * args.verbose, 10)
-        logging.getLogger('omero_database').setLevel(level=loglevel)
+        logging.getLogger('omero_server_setup').setLevel(level=loglevel)
 
     def createconfig(self, args):
         self.setup_logging(args)
