@@ -4,6 +4,7 @@ from argparse import ArgumentParser
 import logging
 import os
 from omero.cli import BaseControl
+from .certificates import create_certificates
 from .createconfig import CreateConfig
 from .db import (
     DbAdmin,
@@ -13,6 +14,7 @@ from .db import (
     DB_UPTODATE,
     Stop,
 )
+from .external import External
 
 DEFAULT_LOGLEVEL = logging.WARNING
 
@@ -42,18 +44,6 @@ class SetupControl(BaseControl):
             '--verbose', '-v', action='count', default=0,
             help='Increase verbosity (can be used multiple times)')
 
-        common_parser.add_argument(
-            '-n', '--dry-run', action='store_true', help=(
-                "Simulation/check mode. In 'upgrade' mode exits with code "
-                "{}:upgrade required "
-                "{}:database isn't initialised "
-                "{}:unable to connect to database "
-                "{}:database is up-to-date.".format(
-                    DB_UPGRADE_NEEDED,
-                    DB_INIT_NEEDED,
-                    DB_NO_CONNECTION,
-                    DB_UPTODATE)))
-
         db_parser = ArgumentParser(add_help=False)
         db_parser.add_argument(
             '--dbhost', default=None,
@@ -70,10 +60,20 @@ class SetupControl(BaseControl):
         db_parser.add_argument(
             '--dbpass', default=None,
             help="Password for connecting to the OMERO database")
-
         db_parser.add_argument(
             "--no-db-config", action="store_true",
             help="Ignore the database settings in omero config")
+        db_parser.add_argument(
+            '-n', '--dry-run', action='store_true', help=(
+                "Simulation/check mode. In 'upgrade' mode exits with code "
+                "{}:upgrade required "
+                "{}:database isn't initialised "
+                "{}:unable to connect to database "
+                "{}:database is up-to-date.".format(
+                    DB_UPGRADE_NEEDED,
+                    DB_INIT_NEEDED,
+                    DB_NO_CONNECTION,
+                    DB_UPTODATE)))
 
         omerosql_parser = ArgumentParser(add_help=False)
         omerosql_parser.add_argument(
@@ -134,6 +134,10 @@ class SetupControl(BaseControl):
         parser_dump.add_argument('--dumpfile', help='Database dump file')
 
         _subparser(
+            sub, 'certificates', self.certificates, [common_parser],
+            'Create and update self-signed server certificates')
+
+        _subparser(
             sub, 'pginit', self.execute, [common_parser],
             'Initialise a new local PostgreSQL server')
 
@@ -159,6 +163,14 @@ class SetupControl(BaseControl):
         try:
             c = CreateConfig(omerodir, args)
             c.create_or_update_config()
+        except Stop as e:
+            self.ctx.die(e.args[0], e.args[1])
+
+    def certificates(self, args):
+        self.setup_logging(args)
+        omerodir = _omerodir()
+        try:
+            create_certificates(External(omerodir))
         except Stop as e:
             self.ctx.die(e.args[0], e.args[1])
 

@@ -75,7 +75,7 @@ class CreateConfig(object):
                          os.path.join(created['omero.data.dir'], 'certs'))
             update_value('ssl.certificate.commonname', '', 'localhost')
             update_value('ssl.certificate.owner', '',
-                         '/C=World/L=OMERO/O=OMERO.server')
+                         '/L=OMERO/O=OMERO.server')
             update_value('ssl.certificate.key', '', 'server.key')
             update_value('omero.glacier2.IceSSL.CertFile', '', 'server.p12')
             update_value('omero.glacier2.IceSSL.CAs', '', 'server.pem')
