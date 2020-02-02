@@ -103,11 +103,11 @@ class SetupControl(BaseControl):
                 'OMERO data directory, use "auto" to use $CONDA_PREFIX/OMERO '
                 'when running in Conda, $HOME/OMERO if not'))
         parser_createconfig.add_argument(
-            '--certs', action='store_true',
-            help='Create self-signed certs instead of using anonymous DH')
+            '--no-certs', action='store_true',
+            help='Disable self-signed certs, use anonymous DH instead')
         parser_createconfig.add_argument(
-            '--websockets', action='store_true',
-            help='Enable websockets')
+            '--no-websockets', action='store_true',
+            help='Disable websockets and enable insecure connections')
 
         _subparser(
             sub, 'justdoit', self.execute,

@@ -15,19 +15,12 @@ If you are setting up a new OMERO.server run:
 ```
 omero setup -v createconfig --data-dir auto
 ```
+This will automatically set a path for the OMERO data directory as well as enabling self-signed certificates adn websockets.
+
 If you do not have a running PostgreSQL server and would like this plugin to take care of starting one include the `--manage-postgres` flag.
 A `pgdata` directory will be created inside your OMERO data directory for PostgreSQL data.
 ```
 omero setup -v createconfig --manage-postgres --data-dir auto
-```
-You can also enable self-signed certificates and websockets:
-```
-omero setup -v createconfig --certs --websockets
-```
-
-All options!
-```
-omero setup -v createconfig --manage-postgres --data-dir auto --certs --websockets
 ```
 
 If you need to overwrite an existing configuration first delete it:
@@ -53,22 +46,19 @@ omero setup pgstart
 
 ### OMERO setup
 
-To automagically setup or update the database run:
+To automagically setup or update the OMERO database run:
 ```
-omero setup justdoit
+omero setup justdoit --adminuser postgres
 ```
 
 This will create, initialise or upgrade your OMERO database if necessary, otherwise it will do nothing.
 
-If the PostgreSQL user or database do not exist you may need to pass admin credentials so the plugin can create them:
-```
-omero database justdoit --adminuser postgres-admin
-```
-If a password is required for the admin account: `--adminpass secret`
+You can omit the `--adminuser` argument if the default user is an admin, or if the database already exists.
+If a password is required for the admin account: `--adminpass secret`.
 
 If you want more control see the help output for other sub-commands.
 
-If you enabled `--certs` you must generate the certificates by running:
+Generate self-signed certificates by running:
 ```
 omero setup certificates
 ```

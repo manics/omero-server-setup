@@ -23,6 +23,11 @@ def create_certificates(external):
         log.debug('%s=%s', key, cfgmap[key])
         return cfgmap[key]
 
+    enabled = getcfg('setup.omero.certs').lower()
+    if enabled != 'true':
+        log.warning('setup.omero.certs is false, not doing anything')
+        return
+
     certdir = getcfg('omero.glacier2.IceSSL.DefaultDir')
 
     cn = getcfg('ssl.certificate.commonname')
@@ -43,7 +48,9 @@ def create_certificates(external):
     os.makedirs(certdir, exist_ok=True)
 
     # Private key
-    if not os.path.exists(keypath):
+    if os.path.exists(keypath):
+        log.info('Using existing key: %s', keypath)
+    else:
         log.info('Creating self-signed CA key: %s', keypath)
         run('openssl', ['genrsa', '-out', keypath, '2048'])
     # Self-signed certificate

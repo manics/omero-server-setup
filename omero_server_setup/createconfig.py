@@ -70,7 +70,10 @@ class CreateConfig(object):
             update_value('omero.db.port', 'dbport', '5432')
 
         # Certificates and websockets
-        if self.args.certs:
+        if self.args.no_certs:
+            created['setup.omero.certs'] = 'false'
+        else:
+            created['setup.omero.certs'] = 'true'
             update_value('omero.glacier2.IceSSL.DefaultDir', '',
                          os.path.join(created['omero.data.dir'], 'certs'))
             update_value('ssl.certificate.commonname', '', 'localhost')
@@ -82,7 +85,10 @@ class CreateConfig(object):
             update_value('omero.glacier2.IceSSL.Password', '', 'secret')
             update_value('omero.glacier2.IceSSL.Ciphers', '', 'ADH:HIGH')
 
-        if self.args.websockets:
+        if self.args.no_websockets:
+            created['setup.omero.websockets'] = 'false'
+        else:
+            created['setup.omero.websockets'] = 'true'
             update_value('omero.client.icetransports', '', 'ssl,wss')
 
         if not self.args.dry_run:
