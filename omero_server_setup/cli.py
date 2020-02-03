@@ -90,7 +90,8 @@ class SetupControl(BaseControl):
         sub = parser.sub()
 
         parser_createconfig = _subparser(
-            sub, 'createconfig', self.createconfig, [common_parser, db_parser],
+            sub, 'createconfig', self.createconfig,
+            [common_parser, db_parser, pgadmin_parser],
             'Update the OMERO configuration file. See --help for options. '
             'This will NOT modify existing configuration keys. '
             'To create a clean configuration first delete etc/grid/config.xml '
@@ -103,7 +104,7 @@ class SetupControl(BaseControl):
                 'OMERO data directory, use "auto" to use $CONDA_PREFIX/OMERO '
                 'when running in Conda, $HOME/OMERO if not'))
         parser_createconfig.add_argument(
-            '--no-certs', action='store_true',
+            '--no-certificates', action='store_true',
             help='Disable self-signed certs, use anonymous DH instead')
         parser_createconfig.add_argument(
             '--no-websockets', action='store_true',
@@ -150,8 +151,12 @@ class SetupControl(BaseControl):
             'Stop a local PostgreSQL server')
 
         _subparser(
-            sub, 'pgrestart', self.execute, [common_parser],
-            'Restart a local PostgreSQL server')
+            sub, 'start', self.omeroctl, [common_parser],
+            'Start OMERO.server')
+
+        _subparser(
+            sub, 'stop', self.omeroctl, [common_parser],
+            'Stop OMERO.server')
 
     def setup_logging(self, args):
         loglevel = max(DEFAULT_LOGLEVEL - 10 * args.verbose, 10)
@@ -162,7 +167,8 @@ class SetupControl(BaseControl):
         omerodir = _omerodir()
         try:
             c = CreateConfig(omerodir, args)
-            c.create_or_update_config()
+            created, changes = c.create_or_update_config()
+            self.ctx.out('\n'.join(changes))
         except Stop as e:
             self.ctx.die(e.args[0], e.args[1])
 
@@ -182,7 +188,38 @@ class SetupControl(BaseControl):
         try:
             DbAdmin(omerodir, args.command, args)
         except Stop as e:
-            # client = self.ctx.conn(args)
             self.ctx.die(e.args[0], e.args[1])
             # self.ctx.set("last.upload.id", obj.id.val)
             # self.ctx.out("OriginalFile:%s" % obj_ids)
+
+    def omeroctl(self, args):
+        self.setup_logging(args)
+        omerodir = _omerodir()
+        cfg = CreateConfig(omerodir, args)
+        if args.verbose:
+            v = ' -' + ('v' * args.verbose)
+        else:
+            v = ''
+
+        cmds = []
+        if args.command == 'start':
+            if cfg.certificates_enabled():
+                cmds.append('setup certificates' + v)
+            if cfg.postgres_enabled():
+                cmds.append('setup pgstart' + v)
+            cmds.append('setup justdoit' + v)
+            cmds.append('admin start' + v)
+
+        if args.command == 'stop':
+            cmds.append('admin stop' + v)
+            if cfg.postgres_enabled():
+                cmds.append('setup pgstop' + v)
+
+        for i, cmd in enumerate(cmds):
+            self.ctx.invoke(cmd)
+            if self.ctx.rv != 0:
+                self.ctx.die(
+                    self.ctx.rv, '**************************************\n'
+                    'Error: {} exited with code {}\n'
+                    'Try running these commands individually:\n  {}'.format(
+                        cmd, self.ctx.rv, '\n  '.join(cmds[i:])))

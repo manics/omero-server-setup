@@ -80,10 +80,10 @@ def run(exe, args, capturestd=False, env=None):
 
     end = time.time()
     if r != 0:
-        log.error("Failed [%.3f s]", end - start)
+        log.debug("Failed [%.3f s]", end - start)
         raise RunException(
             "Non-zero return code", exe, args, r, stdout, stderr)
-    log.info("Completed [%.3f s]", end - start)
+    log.debug("Completed [%.3f s]", end - start)
     return stdout, stderr
 
 
@@ -104,12 +104,18 @@ class External(object):
         self.cli = CLI()
         self.cli.loadplugins()
 
-    def get_config(self):
+    def get_config(self, raise_missing=True):
         """
         Returns a dictionary of all OMERO config properties
         """
         configxml = os.path.join(self.dir, 'etc', 'grid', 'config.xml')
-        configobj = ConfigXml(configxml, read_only=True)
+        try:
+            configobj = ConfigXml(configxml, read_only=True)
+        except Exception as e:
+            log.warning('config.xml not found: %s', e)
+            if raise_missing:
+                raise
+            return {}
         cfgdict = configobj.as_map()
         configobj.close()
         return cfgdict

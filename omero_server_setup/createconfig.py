@@ -11,6 +11,20 @@ from .external import External
 log = logging.getLogger(__name__)
 
 
+def get_config_changes(a, b):
+    keys_a = set(a.keys())
+    keys_b = set(b.keys())
+    keys_common = keys_a.intersection(keys_b)
+    keys_new = keys_b.difference(keys_a)
+    changes = []
+    for k in keys_common:
+        if a[k] != b[k]:
+            changes.append('{}: {} → {}'.format(k, a[k], b[k]))
+    for k in keys_new:
+        changes.append('{}: → {}'.format(k, b[k]))
+    return changes
+
+
 class CreateConfig(object):
     def __init__(self, omerodir, args):
         self.dir = omerodir
@@ -18,6 +32,14 @@ class CreateConfig(object):
         if not os.path.exists(self.dir):
             raise Exception("%s does not exist!" % self.dir)
         self.external = External(self.dir)
+
+    def certificates_enabled(self):
+        cfgmap = self.external.get_config(raise_missing=False)
+        return cfgmap.get('setup.omero.certificates') == 'true'
+
+    def postgres_enabled(self):
+        cfgmap = self.external.get_config(raise_missing=False)
+        return cfgmap.get('postgres.data.dir')
 
     def choose_omero_data_home(self):
         # if os.path.exists('/OMERO'):
@@ -29,11 +51,7 @@ class CreateConfig(object):
         return os.path.join(parent, 'OMERO')
 
     def create_or_update_config(self):
-        try:
-            cfgmap = self.external.get_config()
-        except Exception as e:
-            log.warning('config.xml not found: %s', e)
-            cfgmap = {}
+        cfgmap = self.external.get_config(raise_missing=False)
         created = {}
 
         def update_value(cfgkey, argname, default=None):
@@ -66,14 +84,15 @@ class CreateConfig(object):
             update_value('omero.db.port', 'dbport', '15432')
             # TODO: Set to a random port?
             # created['omero.db.port'] = str(randint(30000, 60000))
+            update_value('postgres.admin.user', 'adminuser', 'postgres')
         else:
             update_value('omero.db.port', 'dbport', '5432')
 
-        # Certificates and websockets
-        if self.args.no_certs:
-            created['setup.omero.certs'] = 'false'
+        # Certificates
+        if self.args.no_certificates:
+            created['setup.omero.certificates'] = 'false'
         else:
-            created['setup.omero.certs'] = 'true'
+            created['setup.omero.certificates'] = 'true'
             update_value('omero.glacier2.IceSSL.DefaultDir', '',
                          os.path.join(created['omero.data.dir'], 'certs'))
             update_value('ssl.certificate.commonname', '', 'localhost')
@@ -85,14 +104,17 @@ class CreateConfig(object):
             update_value('omero.glacier2.IceSSL.Password', '', 'secret')
             update_value('omero.glacier2.IceSSL.Ciphers', '', 'ADH:HIGH')
 
+        # Websockets
         if self.args.no_websockets:
             created['setup.omero.websockets'] = 'false'
         else:
             created['setup.omero.websockets'] = 'true'
             update_value('omero.client.icetransports', '', 'ssl,wss')
 
+        log.info('Configuration: %s', created)
         if not self.args.dry_run:
             self.external.update_config(created)
 
-        log.info('Configuration: %s', created)
-        return created
+        changes = get_config_changes(cfgmap, created)
+        log.info('Changes: %s', changes)
+        return created, changes

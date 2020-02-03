@@ -99,7 +99,7 @@ class DbAdmin(object):
         self.external = External(self.dir)
 
         psqlv = self.psql(version=True)
-        log.info('psql version: %s', psqlv)
+        log.info('psql version: %s', psqlv.strip())
 
         if command in (
             'create',
@@ -111,7 +111,6 @@ class DbAdmin(object):
             'pginit',
             'pgstart',
             'pgstop',
-            'pgrestart',
         ):
             getattr(self, command)()
         elif command is not None:
@@ -343,6 +342,7 @@ class DbAdmin(object):
         update_value('omero.db.port', 'dbport', '5432')
         update_value('omero.db.user', 'dbuser', 'omero')
         update_value('omero.db.pass', 'dbpass', 'omero')
+        update_value('postgres.admin.user', 'adminuser', 'postgres')
 
         return created
 
@@ -364,8 +364,7 @@ class DbAdmin(object):
         env['PGPASSWORD'] = db['pass']
 
         if admin:
-            if self.args.adminuser:
-                db['user'] = self.args.adminuser
+            db['user'] = cfg['postgres.admin.user']
             if self.args.adminpass:
                 db['pass'] = self.args.adminpass
                 env['PGPASSWORD'] = self.args.adminpass
@@ -441,32 +440,53 @@ class DbAdmin(object):
             '-o', '--username=postgres',
         )
 
-    def pgstart(self, restart=False):
+    def pgstart(self):
         cfg = self.get_and_check_config()
+        if self.pgisrunning():
+            log.info('PostgreSQL server already running, restarting')
+            cmd = 'restart'
+        else:
+            log.info('Starting PostgreSQL server')
+            cmd = 'start'
         logfile = os.path.join(cfg['postgres.data.dir'], 'postgres.log')
         self.pg_ctl(
-            'restart' if restart else 'start',
+            cmd,
             '--log={}'.format(logfile),
             '-o', '-p {}'.format(cfg['omero.db.port'])
         )
 
     def pgstop(self):
-        self.pg_ctl('stop')
+        if not self.pgisrunning():
+            log.info('PostgreSQL server already stopped')
+        else:
+            log.info('Stopping PostgreSQL server')
+            self.pg_ctl('stop')
 
-    def pgrestart(self):
-        self.start(restart=True)
-
-    def pg_ctl(self, *args, capturestd=False):
+    def pg_ctl(self, *args, capturestd=False, stop_error=True):
         cfg = self.get_and_check_config()
         pgdata = '--pgdata={}'.format(cfg['postgres.data.dir'])
         try:
             stdout, stderr = run(
                 'pg_ctl', [pgdata] + list(args), capturestd=capturestd)
         except RunException as e:
-            log.fatal(e)
-            raise Stop(10, 'Failed to run pg_ctl {}'.format(args))
+            if stop_error:
+                log.fatal(e)
+                raise Stop(e.r, 'Failed to run pg_ctl {}'.format(args))
+            else:
+                raise
         if capturestd:
             if stderr:
                 log.warning('stderr: %s', stderr)
             log.debug('stdout: %s', stdout)
             return stdout.decode()
+
+    def pgisrunning(self):
+        # Exit code: 0=>running, 3=>not running
+        try:
+            self.pg_ctl('status', capturestd=True, stop_error=False)
+            return True
+        except RunException as e:
+            if e.r == 3:
+                return False
+            else:
+                raise

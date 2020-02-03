@@ -18,14 +18,14 @@ def create_certificates(external):
     cfgmap = external.get_config()
 
     def getcfg(key):
-        if key not in cfgmap or not cfgmap[key]:
+        if not cfgmap.get(key):
             raise Exception('Property {} required'.format(key))
         log.debug('%s=%s', key, cfgmap[key])
         return cfgmap[key]
 
-    enabled = getcfg('setup.omero.certs').lower()
+    enabled = getcfg('setup.omero.certificates').lower()
     if enabled != 'true':
-        log.warning('setup.omero.certs is false, not doing anything')
+        log.warning('setup.omero.certificates is false, not doing anything')
         return
 
     certdir = getcfg('omero.glacier2.IceSSL.DefaultDir')
@@ -40,10 +40,16 @@ def create_certificates(external):
     password = getcfg('omero.glacier2.IceSSL.Password')
 
     try:
-        run('openssl', ['version'])
-    except RunException as e:
-        raise Exception(
-            'Failed to run openssl, is it installed?:\n  {}'.format(e))
+        stdout, stderr = run('openssl', ['version'], capturestd=True)
+    except FileNotFoundError:
+        log.fatal('openssl not found, is it installed?')
+        raise
+    except RunException:
+        log.fatal('openssl failed')
+        raise
+    if stderr:
+        log.warning('openssl: %s', stderr)
+    log.info('openssl version: %s', stdout.strip().decode())
 
     os.makedirs(certdir, exist_ok=True)
 
