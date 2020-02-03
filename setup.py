@@ -8,7 +8,7 @@ import setuptools
 
 
 setuptools.setup(
-    name='omero-cli-database',
+    name='omero-server-setup',
     author='Simon Li',
     author_email='spli@dundee.ac.uk',
     description='OMERO database management plugin',
