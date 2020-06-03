@@ -14,7 +14,6 @@ log = logging.getLogger(__name__)
 
 
 class RunException(Exception):
-
     def __init__(self, msg, exe, exeargs, r, stdout, stderr):
         super(RunException, self).__init__(msg)
         self.exe = exe
@@ -26,15 +25,22 @@ class RunException(Exception):
     def fullstr(self):
         def format(std):
             if std:
-                return std.decode(errors='replace')
-            return ''
-        return '%s\n  stdout: %s\n  stderr: %s' % (
-            self.shortstr(), format(self.stdout), format(self.stderr))
+                return std.decode(errors="replace")
+            return ""
+
+        return "%s\n  stdout: %s\n  stderr: %s" % (
+            self.shortstr(),
+            format(self.stdout),
+            format(self.stderr),
+        )
 
     def shortstr(self):
-        return '%s\n  command: %s %s\n  return code: %d' % (
-            super(RunException, self).__str__(), self.exe,
-            ' '.join(self.exeargs), self.r)
+        return "%s\n  command: %s %s\n  return code: %d" % (
+            super(RunException, self).__str__(),
+            self.exe,
+            " ".join(self.exeargs),
+            self.r,
+        )
 
     def __str__(self):
         return self.fullstr()
@@ -82,7 +88,8 @@ def run(exe, args, capturestd=False, env=None):
     if r != 0:
         log.debug("Failed [%.3f s]", end - start)
         raise RunException(
-            "Non-zero return code", exe, args, r, stdout, stderr)
+            "Non-zero return code", exe, args, r, stdout, stderr
+        )
     log.debug("Completed [%.3f s]", end - start)
     return stdout, stderr
 
@@ -108,11 +115,11 @@ class External(object):
         """
         Returns a dictionary of all OMERO config properties
         """
-        configxml = os.path.join(self.dir, 'etc', 'grid', 'config.xml')
+        configxml = os.path.join(self.dir, "etc", "grid", "config.xml")
         try:
             configobj = ConfigXml(configxml, read_only=True)
         except Exception as e:
-            log.warning('config.xml not found: %s', e)
+            log.warning("config.xml not found: %s", e)
             if raise_missing:
                 raise
             return {}
@@ -125,6 +132,6 @@ class External(object):
         Runs an OMERO CLI command
         """
         assert isinstance(command, list)
-        log.info('Running omero: %s', ' '.join(command))
+        log.info("Running omero: %s", " ".join(command))
         return self.cli.invoke(command)
         # TODO: capturestd=True
