@@ -25,7 +25,7 @@ from mox3 import mox
 import subprocess
 import tempfile
 
-from omero_server_setup import external
+from omero_database import external
 
 
 class TestRunException(object):
@@ -56,10 +56,6 @@ class TestExternal(object):
 
     @pytest.mark.xfail(reason='Not implemented')
     def test_get_config(self):
-        assert False
-
-    @pytest.mark.xfail(reason='Not implemented')
-    def test_update_config(self):
         assert False
 
     def test_omero_cli(self):

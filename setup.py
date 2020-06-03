@@ -17,7 +17,7 @@ setuptools.setup(
     license='GPLv2',
     url='https://github.com/manics/omero-server-setup',
     packages=[
-        'omero_server_setup',
+        'omero_database',
         'omero.plugins',
     ],
     setup_requires=[
@@ -27,7 +27,7 @@ setuptools.setup(
         'omero-py>=5.6.0',
     ],
     use_scm_version={
-        'write_to': 'omero_server_setup/_version.py',
+        'write_to': 'omero_database/_version.py',
     },
     classifiers=[
         'Environment :: Console',

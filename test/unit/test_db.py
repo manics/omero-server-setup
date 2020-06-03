@@ -26,9 +26,9 @@ from argparse import Namespace
 import os
 import re
 
-from omero_server_setup import external
-import omero_server_setup.db
-from omero_server_setup.db import (
+from omero_database import external
+import omero_database.db
+from omero_database.db import (
     DbAdmin,
     is_schema,
     sort_schemas,
@@ -145,7 +145,7 @@ class TestDb(object):
                           'dry_run': dryrun})
         db = self.PartialMockDb(args, ext)
         self.mox.StubOutWithMock(db, 'psql')
-        self.mox.StubOutWithMock(omero_server_setup.db, 'timestamp_filename')
+        self.mox.StubOutWithMock(omero_database.db, 'timestamp_filename')
         self.mox.StubOutWithMock(os.path, 'exists')
         self.mox.StubOutWithMock(db, 'check_connection')
         self.mox.StubOutWithMock(db, 'upgrade')
@@ -154,7 +154,7 @@ class TestDb(object):
         db.check_connection()
         if sqlfile == 'notprovided':
             omerosql = 'omero-00000000-000000-000000.sql'
-            omero_server_setup.db.timestamp_filename('omero', 'sql').AndReturn(
+            omero_database.db.timestamp_filename('omero', 'sql').AndReturn(
                 omerosql)
         else:
             os.path.exists(omerosql).AndReturn(sqlfile == 'exists')
@@ -183,8 +183,8 @@ class TestDb(object):
         self.mox.VerifyAll()
 
     def test_sql_version_matrix(self):
-        self.mox.StubOutWithMock(omero_server_setup.db, 'glob')
-        omero_server_setup.db.glob(
+        self.mox.StubOutWithMock(omero_database.db, 'glob')
+        omero_database.db.glob(
             os.path.join('.', 'sql', 'psql', 'OMERO*', 'OMERO*.sql')
             ).AndReturn(['./sql/psql/OMERO5.0__0/OMERO4.4__0.sql',
                          './sql/psql/OMERO5.1__0/OMERO5.0__0.sql'])
@@ -215,37 +215,6 @@ class TestDb(object):
         assert db.sql_version_resolve(M, versions, '3.0') == [
             '4.4/3.0', '5.0/4.4', '5.1/5.0']
 
-        self.mox.VerifyAll()
-
-    @pytest.mark.parametrize('userexists,dbexists', [
-        (True, True),
-        (True, False),
-        (False, False),
-    ])
-    def test_create(self, userexists, dbexists):
-        args = self.Args({'dry_run': False})
-        db = self.PartialMockDb(args, None)
-        self.mox.StubOutWithMock(db, 'get_db_args_env')
-        self.mox.StubOutWithMock(db, 'psql')
-        db.get_db_args_env().AndReturn(self.create_db_test_params())
-
-        db.psql('-c', "SELECT 1 FROM pg_roles WHERE rolname='user';",
-                admin=True).AndReturn('1\n' if userexists else '')
-        if not userexists:
-            db.psql('-c', "CREATE USER user WITH PASSWORD 'pass';",
-                    admin=True)
-
-        db.psql('-c', "SELECT 1 FROM pg_database WHERE datname='name';",
-                admin=True).AndReturn('1\n' if dbexists else '')
-        if not dbexists:
-            db.psql('-c', "CREATE DATABASE name WITH OWNER user;",
-                    admin=True)
-
-        db.psql('-c', r'\conninfo')
-
-        self.mox.ReplayAll()
-
-        db.create()
         self.mox.VerifyAll()
 
     @pytest.mark.parametrize('needupdate', [True, False])
@@ -349,7 +318,7 @@ class TestDb(object):
     def test_dump(self, dumpfile, dryrun):
         args = self.Args({'dry_run': dryrun, 'dumpfile': dumpfile})
         db = self.PartialMockDb(args, None)
-        self.mox.StubOutWithMock(omero_server_setup.db, 'timestamp_filename')
+        self.mox.StubOutWithMock(omero_database.db, 'timestamp_filename')
         self.mox.StubOutWithMock(db, 'get_db_args_env')
         self.mox.StubOutWithMock(db, 'pgdump')
         self.mox.StubOutWithMock(db, 'check_connection')
@@ -359,7 +328,7 @@ class TestDb(object):
             db.get_db_args_env().AndReturn(self.create_db_test_params())
 
             dumpfile = 'omero-database-name-00000000-000000-000000.pgdump'
-            omero_server_setup.db.timestamp_filename(
+            omero_database.db.timestamp_filename(
                 'omero-database-name', 'pgdump').AndReturn(dumpfile)
 
         if not dryrun:
@@ -434,7 +403,7 @@ class TestDb(object):
     def test_psql(self):
         db = self.PartialMockDb(None, None)
         self.mox.StubOutWithMock(db, 'get_db_args_env')
-        self.mox.StubOutWithMock(omero_server_setup.db, 'run')
+        self.mox.StubOutWithMock(omero_database.db, 'run')
 
         psqlargs = [
             '-v', 'ON_ERROR_STOP=on',
@@ -444,8 +413,8 @@ class TestDb(object):
             '-U', 'user',
             '-d', 'name',
             'arg1', 'arg2']
-        db.get_db_args_env(admin=False).AndReturn(self.create_db_test_params())
-        omero_server_setup.db.run(
+        db.get_db_args_env().AndReturn(self.create_db_test_params())
+        omero_database.db.run(
             'psql', psqlargs, capturestd=True,
             env={'PGPASSWORD': 'pass'}).AndReturn((b'', b''))
         self.mox.ReplayAll()
@@ -456,12 +425,12 @@ class TestDb(object):
     def test_pgdump(self):
         db = self.PartialMockDb(None, None)
         self.mox.StubOutWithMock(db, 'get_db_args_env')
-        self.mox.StubOutWithMock(omero_server_setup.db, 'run')
+        self.mox.StubOutWithMock(omero_database.db, 'run')
 
         pgdumpargs = ['-d', 'name', '-h', 'host', '-U', 'user',
                       '-w', 'arg1', 'arg2']
         db.get_db_args_env().AndReturn(self.create_db_test_params())
-        omero_server_setup.db.run(
+        omero_database.db.run(
             'pg_dump', pgdumpargs, capturestd=True,
             env={'PGPASSWORD': 'pass'}).AndReturn((b'', b''))
         self.mox.ReplayAll()

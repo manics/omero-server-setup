@@ -6,13 +6,13 @@ OMERO setup and database management plugin
 
 import sys
 from omero.cli import CLI
-from omero_server_setup.cli import SetupControl
+from omero_database.cli import DatabaseControl
 
-HELP = 'Configure OMERO and a PostgreSQL database'
+HELP = 'Configure OMERO database'
 try:
-    register('setup', SetupControl, HELP) # noqa
+    register('database', DatabaseControl, HELP) # noqa
 except NameError:
     if __name__ == '__main__':
         cli = CLI()
-        cli.register('setup', SetupControl, HELP)
+        cli.register('database', DatabaseControl, HELP)
         cli.invoke(sys.argv[1:])

@@ -120,12 +120,6 @@ class External(object):
         configobj.close()
         return cfgdict
 
-    def update_config(self, newcfg):
-        cfg = ConfigXml(os.path.join(self.dir, 'etc', 'grid', 'config.xml'))
-        for k, v in newcfg.items():
-            cfg[k] = v
-        cfg.close()
-
     def omero_cli(self, command):
         """
         Runs an OMERO CLI command

@@ -102,15 +102,10 @@ class DbAdmin(object):
         log.info('psql version: %s', psqlv.strip())
 
         if command in (
-            'create',
             'dump',
             'init',
             'justdoit',
             'upgrade',
-
-            'pginit',
-            'pgstart',
-            'pgstop',
         ):
             getattr(self, command)()
         elif command is not None:
@@ -122,15 +117,6 @@ class DbAdmin(object):
         except RunException as e:
             log.error(e)
             raise Stop(DB_NO_CONNECTION, 'Database connection check failed')
-
-    def choose_omero_data_home(self):
-        # if os.path.exists('/OMERO'):
-        #     return '/OMERO'
-        parent = os.getenv('CONDA_PREFIX', os.getenv('HOME'))
-        if not parent:
-            raise Exception(
-                'Unable to determine omero.data.dir. Pass --data-dir.')
-        return os.path.join(parent, 'OMERO')
 
     def init(self):
         self.check_connection()
@@ -249,41 +235,13 @@ class DbAdmin(object):
         """
         status = self.upgrade(check=True)
         if status in (DB_NO_CONNECTION,):
-            self.create()
+            raise Stop(DB_NO_CONNECTION, 'Unable to connect to database')
 
         if status in (DB_NO_CONNECTION, DB_INIT_NEEDED):
             self.init()
 
         if status in (DB_UPGRADE_NEEDED,):
             self.upgrade()
-
-    def create(self):
-        db, env = self.get_db_args_env()
-
-        userexists = self.psql(
-            '-c', "SELECT 1 FROM pg_roles WHERE rolname='{}';".format(
-                db['user']), admin=True)
-        if userexists.strip() == '1':
-            log.info('Database user exists: %s', db['user'])
-        else:
-            log.info('Creating database user: %s', db['user'])
-            if not self.args.dry_run:
-                self.psql('-c', "CREATE USER {} WITH PASSWORD '{}';".format(
-                    db['user'], db['pass']), admin=True)
-
-        dbexists = self.psql(
-            '-c', "SELECT 1 FROM pg_database WHERE datname='{}';".format(
-                db['name']), admin=True)
-        if dbexists.strip() == '1':
-            log.info('Database exists: %s', db['name'])
-        else:
-            log.info('Creating database: %s', db['name'])
-            if not self.args.dry_run:
-                self.psql('-c', "CREATE DATABASE {} WITH OWNER {};".format(
-                    db['name'], db['user']), admin=True)
-
-        if not self.args.dry_run:
-            self.check_connection()
 
     def get_current_db_version(self):
         q = ('SELECT currentversion, currentpatch FROM dbpatch '
@@ -342,11 +300,10 @@ class DbAdmin(object):
         update_value('omero.db.port', 'dbport', '5432')
         update_value('omero.db.user', 'dbuser', 'omero')
         update_value('omero.db.pass', 'dbpass', 'omero')
-        update_value('postgres.admin.user', 'adminuser', 'postgres')
 
         return created
 
-    def get_db_args_env(self, admin=False):
+    def get_db_args_env(self):
         """
         Get a dictionary of database connection parameters, and create an
         environment for running postgres commands.
@@ -363,14 +320,9 @@ class DbAdmin(object):
         env = os.environ.copy()
         env['PGPASSWORD'] = db['pass']
 
-        if admin:
-            db['user'] = cfg['postgres.admin.user']
-            if self.args.adminpass:
-                db['pass'] = self.args.adminpass
-                env['PGPASSWORD'] = self.args.adminpass
         return db, env
 
-    def psql(self, *psqlargs, admin=False, version=False):
+    def psql(self, *psqlargs, version=False):
         """
         Run a psql command
         """
@@ -382,7 +334,7 @@ class DbAdmin(object):
             log.debug('stdout: %s', stdout)
             return stdout.decode()
 
-        db, env = self.get_db_args_env(admin=admin)
+        db, env = self.get_db_args_env()
 
         args = [
             '-v', 'ON_ERROR_STOP=on',
@@ -390,11 +342,8 @@ class DbAdmin(object):
             '-h', db['host'],
             '-p', db['port'],
             '-U', db['user'],
+            '-d', db['name'],
         ]
-        if admin:
-            args += ['-d', 'postgres']
-        if not admin:
-            args += ['-d', db['name']]
         args += list(psqlargs)
         stdout, stderr = run('psql', args, capturestd=True, env=env)
         if stderr:

@@ -129,4 +129,4 @@ dmypy.json
 .pyre/
 
 # setuptools_scm
-omero_server_setup/_version.py*
+omero_database/_version.py*
