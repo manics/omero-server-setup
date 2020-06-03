@@ -1,3 +1,6 @@
-flake8
-mox3
-pytest
+# These are automatically bumped by dependabot
+mox3==1.0.0
+omero-py==5.6.2
+pre-commit==2.4.0
+pytest-cov==2.9.0
+pytest==5.4.3
