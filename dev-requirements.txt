@@ -1,3 +1,4 @@
 flake8
 mox3
 pytest
+git+https://github.com/manics/omero-cli-database.git

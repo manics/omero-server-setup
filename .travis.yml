@@ -4,30 +4,29 @@ dist: bionic
 
 cache: pip
 
-addons:
-  postgresql: '10'
-  apt:
-    packages:
-    - postgresql-10
-    - postgresql-client-10
+services:
+  - postgresql
 
 before_install:
-  - pip install -r dev-requirements.txt
-  - flake8 .
-
-install:
   - pip install https://github.com/ome/zeroc-ice-ubuntu1804/releases/download/0.3.0/zeroc_ice-3.6.5-cp36-cp36m-linux_x86_64.whl
-  - pip install .
+  - pip install -r dev-requirements.txt
   - pushd ..
-  - wget -q https://downloads.openmicroscopy.org/omero/5.6.0/artifacts/OMERO.server-5.6.0-ice36-b136.zip && unzip -q OMERO.server-5.6.0-ice36-b136.zip && ln -s OMERO.server-5.6.0-ice36-b136 OMERO.server
+  - wget -q https://downloads.openmicroscopy.org/omero/5.6.1/artifacts/OMERO.server-5.6.1-ice36-b225.zip && unzip -q OMERO.server-5.6.1-ice36-b225.zip && ln -s OMERO.server-5.6.1-ice36-b225 OMERO.server
   - popd
 
+install:
+  - pre-commit run --all-files
+  - pip install .
+
 script:
-  - export OMERODIR=$PWD/../OMERO.server
-  - pytest test/unit
   # To run the integration tests locally set
-  # OMERODIR=/path/to/OMERO.server POSTGRES_HOST=postgres.server
-  - pytest test/integration
+  #   OMERODIR=/path/to/OMERO.server
+  # Optionally set:
+  #   POSTGRES_HOST=postgres.server
+  #   POSTGRES_USER=admin-user
+  #   POSTGRES_PASSWORD=admin=password
+  - export OMERODIR=$PWD/../OMERO.server
+  - pytest --cov=omero_server_setup
 
 deploy:
   - provider: pypi
