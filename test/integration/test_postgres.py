@@ -14,11 +14,12 @@ from omero_database import (
 from omero_server_setup import PgAdmin
 
 
-DB_ADMIN_USER = os.getenv('POSTGRES_USER', 'postgres')
+DB_ADMIN_USER = os.getenv("POSTGRES_USER", "postgres")
 # Can be None if trust auth is setup
 DB_ADMIN_PASSWORD = os.getenv("POSTGRES_PASSWORD", None)
-DB_HOST, _, DB_PORT = os.getenv(
-    'POSTGRES_HOST', 'localhost:5432').partition(':')
+DB_HOST, _, DB_PORT = os.getenv("POSTGRES_HOST", "localhost:5432").partition(
+    ":"
+)
 
 
 class Args(Namespace):
@@ -29,7 +30,7 @@ class Args(Namespace):
             no_db_config=True,
             dry_run=False,
             omerosql=None,
-            rootpass='omero',
+            rootpass="omero",
             dbname=dbid,
             dbport=DB_PORT,
             dbuser=dbid,
@@ -43,10 +44,9 @@ class Args(Namespace):
 
 
 class TestPgAdmin(object):
-
     def setup_method(self, method):
-        self.dbid = 'x' + str(uuid4()).replace('-', '')
-        self.omerodir = os.getenv('OMERODIR')
+        self.dbid = "x" + str(uuid4()).replace("-", "")
+        self.omerodir = os.getenv("OMERODIR")
 
     def teardown_method(self, method):
         self.psqlc("DROP DATABASE IF EXISTS {0};")
@@ -76,22 +76,28 @@ class TestPgAdmin(object):
         pg = PgAdmin(self.omerodir, None, args)
         assert pg.check() == DB_NO_CONNECTION
 
-        pg = PgAdmin(self.omerodir, 'create', args)
+        pg = PgAdmin(self.omerodir, "create", args)
         assert pg.check() == DB_INIT_NEEDED
 
-        user = self.psqlc("SELECT 1 FROM pg_roles WHERE rolname='{}';".format(
-                          self.dbid))
-        assert user.strip() == b'1'
-        db = self.psqlc("SELECT 1 FROM pg_database WHERE datname='{}';".format(
-                        self.dbid))
-        assert db.strip() == b'1'
+        user = self.psqlc(
+            "SELECT 1 FROM pg_roles WHERE rolname='{}';".format(self.dbid)
+        )
+        assert user.strip() == b"1"
+        db = self.psqlc(
+            "SELECT 1 FROM pg_database WHERE datname='{}';".format(self.dbid)
+        )
+        assert db.strip() == b"1"
 
     def test_justdoit(self):
         args = Args(self.dbid)
-        PgAdmin(self.omerodir, 'justdoit', args)
-        r = self.psqlc('SELECT currentversion, currentpatch FROM dbpatch '
-                       'ORDER BY id DESC', '-d', self.dbid)
-        assert r.splitlines() == [b'OMERO5.4|0']
+        PgAdmin(self.omerodir, "justdoit", args)
+        r = self.psqlc(
+            "SELECT currentversion, currentpatch FROM dbpatch "
+            "ORDER BY id DESC",
+            "-d",
+            self.dbid,
+        )
+        assert r.splitlines() == [b"OMERO5.4|0"]
 
         argscheck = Args(self.dbid, dry_run=True)
         db = PgAdmin(self.omerodir, None, argscheck)
