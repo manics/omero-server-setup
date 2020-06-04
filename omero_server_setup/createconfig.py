@@ -6,7 +6,7 @@ Wrap openssl to manage self-signed certificates
 
 import logging
 import os
-from .external import External
+from omero_database.external import External
 
 log = logging.getLogger(__name__)
 

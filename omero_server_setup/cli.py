@@ -2,84 +2,22 @@
 
 from argparse import ArgumentParser
 import logging
-import os
 from omero.cli import BaseControl
-from .certificates import create_certificates
+from omero_database.cli import _omerodir, _subparser, _get_parsers
+# from .certificates import create_certificates
 from .createconfig import CreateConfig
-from .db import (
+from omero_database import (
     DbAdmin,
-    DB_INIT_NEEDED,
-    DB_NO_CONNECTION,
-    DB_UPGRADE_NEEDED,
-    DB_UPTODATE,
     Stop,
 )
-from .external import External
 
 DEFAULT_LOGLEVEL = logging.WARNING
-
-
-def _omerodir():
-    omerodir = os.getenv('OMERODIR')
-    if not omerodir or not os.path.isdir(omerodir):
-        raise Stop(100, 'OMERODIR not set')
-    return omerodir
-
-
-def _subparser(sub, name, func, parents, help, **kwargs):
-    parser = sub.add_parser(
-        name, parents=parents, help=help, description=help)
-    parser.set_defaults(func=func, **kwargs)
-    parser.set_defaults(command=name)
-    return parser
 
 
 class SetupControl(BaseControl):
 
     def _configure(self, parser):
-        # Arguments common to multiple sub-parsers
-
-        common_parser = ArgumentParser(add_help=False)
-        common_parser.add_argument(
-            '--verbose', '-v', action='count', default=0,
-            help='Increase verbosity (can be used multiple times)')
-
-        db_parser = ArgumentParser(add_help=False)
-        db_parser.add_argument(
-            '--dbhost', default=None,
-            help="Hostname of the OMERO database server")
-        db_parser.add_argument(
-            '--dbport', default=None,
-            help="Port of the OMERO database")
-        db_parser.add_argument(
-            '--dbname', default=None,
-            help="Name of the OMERO database")
-        db_parser.add_argument(
-            '--dbuser', default=None,
-            help="Username for connecting to the OMERO database")
-        db_parser.add_argument(
-            '--dbpass', default=None,
-            help="Password for connecting to the OMERO database")
-        db_parser.add_argument(
-            "--no-db-config", action="store_true",
-            help="Ignore the database settings in omero config")
-        db_parser.add_argument(
-            '-n', '--dry-run', action='store_true', help=(
-                "Simulation/check mode. In 'upgrade' mode exits with code "
-                "{}:upgrade required "
-                "{}:database isn't initialised "
-                "{}:unable to connect to database "
-                "{}:database is up-to-date.".format(
-                    DB_UPGRADE_NEEDED,
-                    DB_INIT_NEEDED,
-                    DB_NO_CONNECTION,
-                    DB_UPTODATE)))
-
-        omerosql_parser = ArgumentParser(add_help=False)
-        omerosql_parser.add_argument(
-            "--omerosql", help="OMERO database SQL initialisation file")
-        omerosql_parser.add_argument(
-            '--rootpass', default='omero', help="OMERO admin password")
+        common_parser, db_parser, omerosql_parser = _get_parsers()
 
         pgadmin_parser = ArgumentParser(add_help=False)
         pgadmin_parser.add_argument(
@@ -112,27 +50,13 @@ class SetupControl(BaseControl):
 
         _subparser(
             sub, 'justdoit', self.execute,
-            [common_parser, db_parser, omerosql_parser, pgadmin_parser],
+            [common_parser, db_parser, pgadmin_parser],
             'Create, initialise and/or upgrade a database if necessary')
 
         _subparser(
             sub, 'create', self.execute,
             [common_parser, db_parser, pgadmin_parser],
             'Create a new PostgreSQL user and database if necessary')
-
-        _subparser(
-            sub, 'init', self.execute,
-            [common_parser, db_parser, omerosql_parser],
-            'Initialise a database')
-
-        _subparser(
-            sub, 'upgrade', self.execute, [common_parser, db_parser],
-            'Upgrade a database')
-
-        parser_dump = _subparser(
-            sub, 'dump', self.execute, [common_parser, db_parser],
-            'Dump a database')
-        parser_dump.add_argument('--dumpfile', help='Database dump file')
 
         _subparser(
             sub, 'certificates', self.certificates, [common_parser],
@@ -174,11 +98,11 @@ class SetupControl(BaseControl):
 
     def certificates(self, args):
         self.setup_logging(args)
-        omerodir = _omerodir()
-        try:
-            create_certificates(External(omerodir))
-        except Stop as e:
-            self.ctx.die(e.args[0], e.args[1])
+        # omerodir = _omerodir()
+        # try:
+        #     create_certificates(External(omerodir))
+        # except Stop as e:
+        #     self.ctx.die(e.args[0], e.args[1])
 
     def execute(self, args):
         self.setup_logging(args)
