@@ -1,4 +1,5 @@
 mox3
 pre-commit
 pytest
+pytest-cov
 git+https://github.com/manics/omero-cli-database.git
