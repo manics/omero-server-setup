@@ -1,4 +1,4 @@
-flake8
 mox3
+pre-commit
 pytest
 git+https://github.com/manics/omero-cli-database.git
